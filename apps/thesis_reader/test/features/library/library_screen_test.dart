@@ -44,6 +44,28 @@ void main() {
     expect(find.text('42%'), findsOneWidget);
   });
 
+  testWidgets('library shows unread documents without a misleading percent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LibraryScreen(
+          documents: [
+            LibraryDocumentViewModel(
+              id: 'doc-1',
+              title: 'Attention Is All You Need',
+              conversionStatus: '변환 완료',
+              lastReadProgress: 0,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('읽기 전'), findsOneWidget);
+    expect(find.text('0%'), findsNothing);
+  });
+
   testWidgets('library invokes document selection callbacks', (tester) async {
     String? selectedDocumentId;
     await tester.pumpWidget(

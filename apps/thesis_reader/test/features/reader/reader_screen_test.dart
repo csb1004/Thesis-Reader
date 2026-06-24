@@ -220,6 +220,25 @@ void main() {
     expect(referenceSpan.style?.color, isNotNull);
   });
 
+  testWidgets('reader selection uses thesis actions instead of platform menu', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['Transformer context sentence']),
+        ),
+      ),
+    );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+
+    expect(selectable.contextMenuBuilder, isNotNull);
+  });
+
   testWidgets('opens referenced asset in a bottom sheet', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

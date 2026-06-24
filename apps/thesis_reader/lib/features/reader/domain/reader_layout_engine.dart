@@ -99,9 +99,13 @@ final class _ReaderMetrics {
     final fontSize = 16 * settings.fontScale;
     final margin = 24 * settings.marginScale;
     final contentWidth = math.max(1, viewport.width - margin * 2);
-    final contentHeight = math.max(fontSize, viewport.height - margin * 2);
-    final averageCharWidth = fontSize * 0.25;
     final effectiveLineHeight = math.max(1, fontSize * settings.lineHeight);
+    final footerReserve = effectiveLineHeight * 2;
+    final contentHeight = math.max(
+      fontSize,
+      viewport.height - margin * 2 - footerReserve,
+    );
+    final averageCharWidth = fontSize * 0.55;
 
     return _ReaderMetrics(
       charsPerLine: math.max(8, (contentWidth / averageCharWidth).floor()),
@@ -118,7 +122,11 @@ final class _ReaderMetrics {
       if (normalized.isEmpty) {
         return 1;
       }
-      return math.max(1, (normalized.length / charsPerLine).ceil()) + 1;
+      final explicitLines = normalized.split(RegExp(r'\n+'));
+      final wrappedLineCount = explicitLines.fold<int>(0, (sum, line) {
+        return sum + math.max(1, (line.length / charsPerLine).ceil());
+      });
+      return math.max(1, wrappedLineCount) + 2;
     }
 
     return switch (block.kind) {

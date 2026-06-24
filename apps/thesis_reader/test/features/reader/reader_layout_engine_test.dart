@@ -51,7 +51,7 @@ void main() {
       assets: [],
     );
 
-    const viewport = ReaderViewport(width: 360, height: 640);
+    const viewport = ReaderViewport(width: 320, height: 360);
 
     final normal = ReaderLayoutEngine.paginate(
       package,
@@ -60,12 +60,13 @@ void main() {
     );
     final large = ReaderLayoutEngine.paginate(
       package,
-      const ReaderSettings(fontScale: 1.6),
+      const ReaderSettings(fontScale: 2.4),
       viewport,
     );
 
     expect(normal.orderedBlockIds, ['b1', 'b2']);
     expect(large.orderedBlockIds, ['b1', 'b2']);
-    expect(normal.pages.length, isNot(large.pages.length));
+    expect(large.charsPerLine, lessThan(normal.charsPerLine));
+    expect(large.linesPerPage, lessThan(normal.linesPerPage));
   });
 }

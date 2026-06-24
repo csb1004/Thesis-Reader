@@ -2,16 +2,22 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:document_contract/document_contract.dart';
+import 'package:drift/drift.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:thesis_reader/features/ai/data/openai_client.dart';
+import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
+import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/library/data/converter_client.dart';
 import 'package:thesis_reader/features/library/data/document_repository.dart';
 import 'package:thesis_reader/features/library/presentation/import_status_screen.dart';
 import 'package:thesis_reader/features/library/presentation/library_screen.dart';
 import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
+import 'package:thesis_reader/features/vocabulary/data/vocabulary_repository.dart';
+import 'package:thesis_reader/shared/storage/app_database.dart';
 import 'package:thesis_reader/shared/storage/document_file_store.dart';
 
 const _converterBaseUri = 'https://thesis-reader-production.up.railway.app';
@@ -56,9 +62,35 @@ class _LibraryHome extends StatefulWidget {
 }
 
 class _LibraryHomeState extends State<_LibraryHome> {
+  AppDatabase? _database;
+  OpenAiKeyStore? _openAiKeyStore;
+  OpenAiClient? _openAiClient;
+  TranslationService? _translationService;
+  VocabularyRepository? _vocabularyRepository;
   final List<LibraryDocumentViewModel> _documents = [];
   final Map<String, DocumentPackage> _packagesByDocumentId = {};
+  final Map<String, String> _originalPdfPathsByDocumentId = {};
   var _isImporting = false;
+
+  @override
+  void dispose() {
+    _openAiClient?.close();
+    _database?.close();
+    super.dispose();
+  }
+
+  AppDatabase get _appDatabase => _database ??= AppDatabase();
+
+  OpenAiKeyStore get _appOpenAiKeyStore => _openAiKeyStore ??= OpenAiKeyStore();
+
+  OpenAiClient get _appOpenAiClient =>
+      _openAiClient ??= OpenAiClient(keyStore: _appOpenAiKeyStore);
+
+  TranslationService get _appTranslationService => _translationService ??=
+      TranslationService(openAiClient: _appOpenAiClient);
+
+  VocabularyRepository get _appVocabularyRepository =>
+      _vocabularyRepository ??= DriftVocabularyRepository(_appDatabase);
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +120,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
         fileStore: DocumentFileStore(rootDirectory: appDirectory),
       );
       final document = await repository.importPdf(File(selectedPath));
+      await _saveImportedDocument(document);
       final package = _buildImportedPdfPackage(document);
 
       if (!mounted) {
@@ -95,6 +128,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
       }
       setState(() {
         _packagesByDocumentId[document.id] = package;
+        _originalPdfPathsByDocumentId[document.id] = document.localPdfPath;
         _documents.add(
           LibraryDocumentViewModel(
             id: document.id,
@@ -113,9 +147,9 @@ class _LibraryHomeState extends State<_LibraryHome> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF 가져오기에 실패했습니다: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('PDF 가져오기에 실패했습니다: $error')));
     } finally {
       if (mounted) {
         setState(() => _isImporting = false);
@@ -125,11 +159,20 @@ class _LibraryHomeState extends State<_LibraryHome> {
 
   void _openDocument(String documentId) {
     final package = _packagesByDocumentId[documentId];
+    final readablePackage =
+        package?.metadata.converterVersion == 'app-shell-import-placeholder'
+        ? null
+        : package;
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (context) => ReaderScreen(
           documentId: documentId,
-          package: package,
+          package: readablePackage,
+          originalPdfPath: _originalPdfPathsByDocumentId[documentId],
+          openAiKeyStore: _appOpenAiKeyStore,
+          translationService: _appTranslationService,
+          vocabularyRepository: _appVocabularyRepository,
+          onProgressChanged: _handleReaderProgress,
         ),
       ),
     );
@@ -160,7 +203,10 @@ class _LibraryHomeState extends State<_LibraryHome> {
       );
       final payload =
           jsonDecode(await packageFile.readAsString()) as Map<String, Object?>;
-      final convertedPackage = DocumentPackage.fromJson(payload);
+      final convertedPackage = _withPackageAssetPaths(
+        DocumentPackage.fromJson(payload),
+        packageFile.parent,
+      );
 
       if (!mounted) {
         return;
@@ -179,16 +225,18 @@ class _LibraryHomeState extends State<_LibraryHome> {
       setState(() {
         _replaceDocumentStatus(document.id, '서버 변환 실패 - 임시 보기');
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('서버 변환 실패: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('서버 변환 실패: $error')));
     } finally {
       client.close();
     }
   }
 
   void _replaceDocumentStatus(String documentId, String status) {
-    final index = _documents.indexWhere((document) => document.id == documentId);
+    final index = _documents.indexWhere(
+      (document) => document.id == documentId,
+    );
     if (index == -1) {
       return;
     }
@@ -200,6 +248,51 @@ class _LibraryHomeState extends State<_LibraryHome> {
       conversionStatus: status,
       lastReadProgress: document.lastReadProgress,
     );
+  }
+
+  void _handleReaderProgress(ReaderProgress progress) {
+    final index = _documents.indexWhere(
+      (document) => document.id == progress.documentId,
+    );
+    if (index == -1) {
+      return;
+    }
+
+    final value = progress.pageIndex != null && progress.pageCount != null
+        ? ((progress.pageIndex! + 1) / progress.pageCount!).clamp(0.0, 1.0)
+        : progress.scrollProgress;
+    if (value == null) {
+      return;
+    }
+
+    setState(() {
+      final document = _documents[index];
+      _documents[index] = LibraryDocumentViewModel(
+        id: document.id,
+        title: document.title,
+        conversionStatus: document.conversionStatus,
+        lastReadProgress: value,
+      );
+    });
+  }
+
+  Future<void> _saveImportedDocument(DocumentRecord document) {
+    return _appDatabase
+        .into(_appDatabase.documents)
+        .insertOnConflictUpdate(
+          DocumentsCompanion.insert(
+            id: document.id,
+            title: document.sourceFilename,
+            sourceFilename: document.sourceFilename,
+            localPdfPath: document.localPdfPath,
+            status: document.status,
+            createdAt: document.createdAt,
+            updatedAt: document.updatedAt,
+            packagePath: const Value.absent(),
+            lastReadBlockId: const Value.absent(),
+            lastReadOffset: const Value.absent(),
+          ),
+        );
   }
 
   DocumentPackage _buildImportedPdfPackage(DocumentRecord document) {
@@ -228,6 +321,34 @@ class _LibraryHomeState extends State<_LibraryHome> {
         ),
       ],
       assets: const [],
+    );
+  }
+
+  DocumentPackage _withPackageAssetPaths(
+    DocumentPackage package,
+    Directory packageDirectory,
+  ) {
+    return DocumentPackage(
+      packageVersion: package.packageVersion,
+      documentId: package.documentId,
+      metadata: package.metadata,
+      sections: package.sections,
+      blocks: package.blocks,
+      assets: [
+        for (final asset in package.assets)
+          DocumentAsset(
+            id: asset.id,
+            kind: asset.kind,
+            label: asset.label,
+            relativePath: p.isAbsolute(asset.relativePath)
+                ? asset.relativePath
+                : p.join(packageDirectory.path, asset.relativePath),
+            caption: asset.caption,
+          ),
+      ],
+      anchors: package.anchors,
+      vocabulary: package.vocabulary,
+      summaries: package.summaries,
     );
   }
 }

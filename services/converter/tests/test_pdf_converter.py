@@ -12,4 +12,5 @@ def test_converts_simple_pdf_to_document_package(tmp_path):
     assert output_dir.exists()
     assert package.assets
     for asset in package.assets:
+        assert asset.relativePath.endswith(".png")
         assert (output_dir / asset.relativePath).is_file()

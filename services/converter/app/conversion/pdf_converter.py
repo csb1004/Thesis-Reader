@@ -77,6 +77,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
         assets=list(assets_by_label.values()),
         anchors=anchors,
     )
+    _write_asset_images(pdf_path, output_dir, package.assets, body_lines)
     write_document_package(package, output_dir)
     return package
 
@@ -109,7 +110,7 @@ def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> li
                     id=f"{prefix}-{_reference_number(label)}",
                     kind=asset_kind,
                     label=label,
-                    relativePath=f"assets/{prefix}-{_reference_number(label)}.txt",
+                    relativePath=f"assets/{prefix}-{_reference_number(label)}.png",
                 ),
             )
             spans.append(
@@ -127,3 +128,51 @@ def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> li
 def _reference_number(label: str) -> str:
     match = re.search(r"\d+", label)
     return match.group(0) if match else "unknown"
+
+
+def _write_asset_images(
+    pdf_path: Path,
+    output_dir: Path,
+    assets: list[DocumentAsset],
+    lines: list[dict],
+) -> None:
+    if not assets:
+        return
+
+    assets_dir = output_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    with fitz.open(pdf_path) as document:
+        for asset in assets:
+            target = output_dir / asset.relativePath
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                continue
+
+            match = _line_for_asset(asset, lines)
+            page_index = max(0, (match["page"] if match else 1) - 1)
+            page = document[page_index]
+            clip = _asset_clip(page, match)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
+            pixmap.save(target)
+
+
+def _line_for_asset(asset: DocumentAsset, lines: list[dict]) -> dict | None:
+    for line in lines:
+        if asset.label in line["text"]:
+            return line
+    return None
+
+
+def _asset_clip(page: fitz.Page, line: dict | None) -> fitz.Rect:
+    if line is None:
+        return page.rect
+
+    rect = fitz.Rect(line["rect"])
+    top = max(0, rect.y0 - 280)
+    bottom = min(page.rect.height, rect.y1 + 80)
+    if bottom - top < 120:
+        top = max(0, rect.y0 - 180)
+        bottom = min(page.rect.height, rect.y1 + 180)
+
+    return fitz.Rect(0, top, page.rect.width, bottom)

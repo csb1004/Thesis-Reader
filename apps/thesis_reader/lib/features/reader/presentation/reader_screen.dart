@@ -1,11 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/material.dart';
+import 'package:pdfx/pdfx.dart';
+import 'package:thesis_reader/features/ai/data/openai_client.dart';
+import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
+import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/viewer_settings_sheet.dart';
+import 'package:thesis_reader/features/vocabulary/data/vocabulary_repository.dart';
+import 'package:thesis_reader/features/vocabulary/presentation/vocabulary_screen.dart';
 import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
 
 final class ReaderProgress {
@@ -29,6 +36,10 @@ final class ReaderScreen extends StatefulWidget {
     super.key,
     required this.documentId,
     this.package,
+    this.originalPdfPath,
+    this.openAiKeyStore,
+    this.translationService,
+    this.vocabularyRepository,
     this.initialSettings = const ReaderSettings(),
     this.onProgressChanged,
     this.volumeKeyEvents,
@@ -36,6 +47,10 @@ final class ReaderScreen extends StatefulWidget {
 
   final String documentId;
   final DocumentPackage? package;
+  final String? originalPdfPath;
+  final OpenAiKeyStore? openAiKeyStore;
+  final TranslationService? translationService;
+  final VocabularyRepository? vocabularyRepository;
   final ReaderSettings initialSettings;
   final ValueChanged<ReaderProgress>? onProgressChanged;
   final Stream<VolumeKeyEvent>? volumeKeyEvents;
@@ -92,14 +107,23 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       appBar: AppBar(
         title: Text(package?.metadata.title ?? 'Reader'),
         actions: [
-          IconButton(
-            tooltip: '리더 설정',
-            icon: const Icon(Icons.tune),
-            onPressed: _showSettings,
-          ),
+          if (package != null)
+            IconButton(
+              tooltip: '단어장',
+              icon: const Icon(Icons.menu_book_outlined),
+              onPressed: _openVocabulary,
+            ),
+          if (package != null)
+            IconButton(
+              tooltip: '리더 설정',
+              icon: const Icon(Icons.tune),
+              onPressed: _showSettings,
+            ),
         ],
       ),
-      body: package == null ? const _EmptyReader() : _buildReader(package),
+      body: package == null
+          ? _OriginalPdfFallback(path: widget.originalPdfPath)
+          : _buildReader(package),
     );
   }
 
@@ -128,6 +152,8 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               readerTheme: readerTheme,
               controller: _pageController,
               onAssetPressed: _openAsset,
+              onTranslateSelection: _translateSelection,
+              onAddVocabulary: _addSelectedVocabulary,
               onPageChanged: (pageIndex) {
                 widget.onProgressChanged?.call(
                   ReaderProgress(
@@ -144,6 +170,8 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               readerTheme: readerTheme,
               controller: _scrollController,
               onAssetPressed: _openAsset,
+              onTranslateSelection: _translateSelection,
+              onAddVocabulary: _addSelectedVocabulary,
               onScrollEnded: _handleScrollEnd,
             ),
           },
@@ -251,6 +279,217 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         );
     }
   }
+
+  void _openVocabulary() {
+    final repository = widget.vocabularyRepository;
+    if (repository == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('단어장을 아직 사용할 수 없습니다.')));
+      return;
+    }
+
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => VocabularyScreen(
+          documentId: widget.documentId,
+          repository: repository,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _translateSelection(
+    String selectedText,
+    String sourceSentence,
+  ) async {
+    final expression = selectedText.trim();
+    if (expression.isEmpty) {
+      return;
+    }
+
+    final service = widget.translationService;
+    if (service == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OpenAI 토큰 설정 후 번역할 수 있습니다.')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$expression 번역 중...')));
+    final result = _isSingleExpression(expression)
+        ? await service.explainWord(
+            expression: expression,
+            sourceSentence: sourceSentence,
+          )
+        : await service.translateSelection(selectedText: expression);
+
+    if (!mounted) {
+      return;
+    }
+
+    switch (result) {
+      case AiSuccess(value: final action):
+        if (action.shouldAutoSave) {
+          await _saveVocabulary(action);
+        }
+        if (!mounted) {
+          return;
+        }
+        await _showTranslationResult(action);
+      case AiFailure(kind: AiFailureKind.missingKey):
+        await _showOpenAiTokenDialog();
+      case AiFailure(message: final message):
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('번역 실패: $message')));
+    }
+  }
+
+  Future<void> _addSelectedVocabulary(
+    String selectedText,
+    String sourceSentence,
+  ) async {
+    final expression = selectedText.trim();
+    if (expression.isEmpty) {
+      return;
+    }
+
+    await _saveVocabulary(
+      TranslationAction(
+        type: TranslationActionType.selectionTranslation,
+        sourceText: expression,
+        koreanText: '',
+        shouldAutoSave: false,
+        canAddToVocabulary: true,
+      ),
+      sourceSentence: sourceSentence,
+    );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$expression 단어장에 저장됨')));
+  }
+
+  Future<void> _saveVocabulary(
+    TranslationAction action, {
+    String? sourceSentence,
+  }) async {
+    final repository = widget.vocabularyRepository;
+    if (repository == null) {
+      return;
+    }
+
+    await repository.upsert(
+      VocabularyDraft(
+        documentId: widget.documentId,
+        expression: action.sourceText,
+        meaningKo: action.koreanText.trim().isEmpty ? null : action.koreanText,
+        sourceSentence: sourceSentence ?? action.sourceText,
+        contextBefore: null,
+        contextAfter: null,
+      ),
+    );
+  }
+
+  Future<void> _showTranslationResult(TranslationAction action) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  action.sourceText,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                SelectableText(action.koreanText),
+                if (!action.shouldAutoSave && action.canAddToVocabulary) ...[
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        unawaited(_saveVocabulary(action));
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${action.sourceText} 단어장에 저장됨'),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.bookmark_add_outlined),
+                      label: const Text('단어장에 추가'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showOpenAiTokenDialog() async {
+    final keyStore = widget.openAiKeyStore;
+    if (keyStore == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OpenAI 토큰 설정 후 번역할 수 있습니다.')),
+      );
+      return;
+    }
+
+    final controller = TextEditingController();
+    final token = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('OpenAI 토큰 입력'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'API key',
+            hintText: 'sk-...',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (token == null || token.isEmpty) {
+      return;
+    }
+
+    await keyStore.writeKey(token);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('OpenAI 토큰을 저장했습니다. 다시 번역해 주세요.')),
+    );
+  }
 }
 
 final class _PageModeReader extends StatelessWidget {
@@ -261,6 +500,8 @@ final class _PageModeReader extends StatelessWidget {
     required this.readerTheme,
     required this.controller,
     required this.onAssetPressed,
+    required this.onTranslateSelection,
+    required this.onAddVocabulary,
     required this.onPageChanged,
   });
 
@@ -270,6 +511,8 @@ final class _PageModeReader extends StatelessWidget {
   final ReaderThemeData readerTheme;
   final PageController controller;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onTranslateSelection;
+  final _SelectionAction onAddVocabulary;
   final ValueChanged<int> onPageChanged;
 
   @override
@@ -283,28 +526,45 @@ final class _PageModeReader extends StatelessWidget {
       itemCount: layout.pages.length,
       itemBuilder: (context, index) {
         final page = layout.pages[index];
-        return ListView(
+        return Padding(
           padding: EdgeInsets.all(24 * settings.marginScale),
-          children: [
-            for (final blockId in page.blockIds)
-              if (blocksById[blockId] case final block?)
-                _ReaderBlock(
-                  block: block,
-                  settings: settings,
-                  readerTheme: readerTheme,
-                  assetsById: assetsById,
-                  onAssetPressed: onAssetPressed,
+          child: ClipRect(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final blockId in page.blockIds)
+                          if (blocksById[blockId] case final block?)
+                            _ReaderBlock(
+                              block: block,
+                              settings: settings,
+                              readerTheme: readerTheme,
+                              assetsById: assetsById,
+                              onAssetPressed: onAssetPressed,
+                              onTranslateSelection: onTranslateSelection,
+                              onAddVocabulary: onAddVocabulary,
+                            ),
+                      ],
+                    ),
+                  ),
                 ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '${page.pageNumber} / ${layout.pages.length}',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: readerTheme.textColor.withValues(alpha: 0.7),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '${page.pageNumber} / ${layout.pages.length}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: readerTheme.textColor.withValues(alpha: 0.7),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -318,6 +578,8 @@ final class _ScrollModeReader extends StatelessWidget {
     required this.readerTheme,
     required this.controller,
     required this.onAssetPressed,
+    required this.onTranslateSelection,
+    required this.onAddVocabulary,
     required this.onScrollEnded,
   });
 
@@ -326,6 +588,8 @@ final class _ScrollModeReader extends StatelessWidget {
   final ReaderThemeData readerTheme;
   final ScrollController controller;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onTranslateSelection;
+  final _SelectionAction onAddVocabulary;
   final ValueChanged<ScrollMetrics> onScrollEnded;
 
   @override
@@ -351,6 +615,8 @@ final class _ScrollModeReader extends StatelessWidget {
                   readerTheme: readerTheme,
                   assetsById: assetsById,
                   onAssetPressed: onAssetPressed,
+                  onTranslateSelection: onTranslateSelection,
+                  onAddVocabulary: onAddVocabulary,
                 );
               },
             ),
@@ -368,6 +634,8 @@ final class _ReaderBlock extends StatelessWidget {
     required this.readerTheme,
     required this.assetsById,
     required this.onAssetPressed,
+    required this.onTranslateSelection,
+    required this.onAddVocabulary,
   });
 
   final DocumentBlock block;
@@ -375,6 +643,8 @@ final class _ReaderBlock extends StatelessWidget {
   final ReaderThemeData readerTheme;
   final Map<String, DocumentAsset> assetsById;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onTranslateSelection;
+  final _SelectionAction onAddVocabulary;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +664,8 @@ final class _ReaderBlock extends StatelessWidget {
           assetsById: assetsById,
           style: textStyle,
           onAssetPressed: onAssetPressed,
+          onTranslateSelection: onTranslateSelection,
+          onAddVocabulary: onAddVocabulary,
         ),
       );
     }
@@ -421,6 +693,8 @@ final class _ReferenceSelectableText extends StatefulWidget {
     required this.assetsById,
     required this.style,
     required this.onAssetPressed,
+    required this.onTranslateSelection,
+    required this.onAddVocabulary,
   });
 
   final String text;
@@ -428,6 +702,8 @@ final class _ReferenceSelectableText extends StatefulWidget {
   final Map<String, DocumentAsset> assetsById;
   final TextStyle style;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onTranslateSelection;
+  final _SelectionAction onAddVocabulary;
 
   @override
   State<_ReferenceSelectableText> createState() =>
@@ -455,7 +731,11 @@ final class _ReferenceSelectableTextState
     final validSpans = _validReferenceSpans(widget.text, existingTargetSpans);
 
     if (validSpans.isEmpty) {
-      return SelectableText(widget.text, style: widget.style);
+      return SelectableText(
+        widget.text,
+        style: widget.style,
+        contextMenuBuilder: _buildContextMenu,
+      );
     }
 
     var offset = 0;
@@ -493,6 +773,42 @@ final class _ReferenceSelectableTextState
 
     return SelectableText.rich(
       TextSpan(style: widget.style, children: children),
+      contextMenuBuilder: _buildContextMenu,
+    );
+  }
+
+  Widget _buildContextMenu(
+    BuildContext context,
+    EditableTextState editableTextState,
+  ) {
+    final value = editableTextState.textEditingValue;
+    final selectedText = value.selection.textInside(value.text).trim();
+    final buttonItems = <ContextMenuButtonItem>[
+      ContextMenuButtonItem(
+        label: '번역',
+        onPressed: selectedText.isEmpty
+            ? null
+            : () {
+                editableTextState.hideToolbar();
+                unawaited(
+                  widget.onTranslateSelection(selectedText, widget.text),
+                );
+              },
+      ),
+      ContextMenuButtonItem(
+        label: '단어장 추가',
+        onPressed: selectedText.isEmpty
+            ? null
+            : () {
+                editableTextState.hideToolbar();
+                unawaited(widget.onAddVocabulary(selectedText, widget.text));
+              },
+      ),
+    ];
+
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: editableTextState.contextMenuAnchors,
+      buttonItems: buttonItems,
     );
   }
 
@@ -594,25 +910,7 @@ final class _AssetDetailPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              height: 180,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    '자산 미리보기를 사용할 수 없습니다.\n${asset.relativePath}',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _AssetPreview(asset: asset),
           if (asset.caption case final caption?) ...[
             const SizedBox(height: 16),
             Text(caption, style: textTheme.bodyLarge),
@@ -625,11 +923,112 @@ final class _AssetDetailPanel extends StatelessWidget {
   }
 }
 
-final class _EmptyReader extends StatelessWidget {
-  const _EmptyReader();
+final class _AssetPreview extends StatelessWidget {
+  const _AssetPreview({required this.asset});
+
+  final DocumentAsset asset;
 
   @override
   Widget build(BuildContext context) {
-    return const Center(child: Text('읽을 문서가 없습니다'));
+    final path = asset.relativePath;
+    final extension = _fileExtension(path);
+    final isImage = const {
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.webp',
+    }.contains(extension);
+    final file = File(path);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 280,
+        child: isImage && file.existsSync()
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(7),
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: Image.file(file, fit: BoxFit.contain),
+                ),
+              )
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    '자산 미리보기를 사용할 수 없습니다.\n$path',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+      ),
+    );
   }
 }
+
+final class _OriginalPdfFallback extends StatefulWidget {
+  const _OriginalPdfFallback({required this.path});
+
+  final String? path;
+
+  @override
+  State<_OriginalPdfFallback> createState() => _OriginalPdfFallbackState();
+}
+
+final class _OriginalPdfFallbackState extends State<_OriginalPdfFallback> {
+  PdfControllerPinch? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final path = widget.path;
+    if (path != null && File(path).existsSync()) {
+      _controller = PdfControllerPinch(document: PdfDocument.openFile(path));
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _OriginalPdfFallback oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.path != widget.path) {
+      _controller?.dispose();
+      final path = widget.path;
+      _controller = path != null && File(path).existsSync()
+          ? PdfControllerPinch(document: PdfDocument.openFile(path))
+          : null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) {
+      return const Center(child: Text('읽을 문서가 없습니다'));
+    }
+
+    return PdfViewPinch(controller: controller);
+  }
+}
+
+String _fileExtension(String path) {
+  final index = path.lastIndexOf('.');
+  return index == -1 ? '' : path.substring(index).toLowerCase();
+}
+
+bool _isSingleExpression(String expression) {
+  return expression.trim().split(RegExp(r'\s+')).length == 1;
+}
+
+typedef _SelectionAction =
+    Future<void> Function(String selectedText, String sourceSentence);

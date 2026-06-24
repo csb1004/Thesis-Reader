@@ -95,7 +95,7 @@ class _LibraryDocumentRow extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       title: Text(document.title),
       subtitle: Text(document.conversionStatus),
-      trailing: Text('$progress%'),
+      trailing: Text(progress == 0 ? '읽기 전' : '$progress%'),
       onTap: onTap,
     );
   }
