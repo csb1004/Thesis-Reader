@@ -1,15 +1,20 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:document_contract/document_contract.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:thesis_reader/features/library/data/converter_client.dart';
 import 'package:thesis_reader/features/library/data/document_repository.dart';
 import 'package:thesis_reader/features/library/presentation/import_status_screen.dart';
 import 'package:thesis_reader/features/library/presentation/library_screen.dart';
 import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
 import 'package:thesis_reader/shared/storage/document_file_store.dart';
+
+const _converterBaseUri = 'https://thesis-reader-production.up.railway.app';
 
 final GoRouter _router = GoRouter(
   routes: [
@@ -94,7 +99,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
           LibraryDocumentViewModel(
             id: document.id,
             title: document.sourceFilename,
-            conversionStatus: 'PDF 가져오기 완료',
+            conversionStatus: '서버 변환 중',
             lastReadProgress: 0,
           ),
         );
@@ -102,6 +107,8 @@ class _LibraryHomeState extends State<_LibraryHome> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${document.sourceFilename} 가져오기 완료')),
       );
+
+      await _convertWithRailway(document, appDirectory);
     } on Object catch (error) {
       if (!mounted) {
         return;
@@ -128,6 +135,73 @@ class _LibraryHomeState extends State<_LibraryHome> {
     );
   }
 
+  Future<void> _convertWithRailway(
+    DocumentRecord document,
+    Directory appDirectory,
+  ) async {
+    final client = HttpConverterClient(baseUri: Uri.parse(_converterBaseUri));
+    try {
+      final job = await client.createJob(File(document.localPdfPath));
+      var status = job.status;
+
+      while (status == ConverterJobStatus.queued ||
+          status == ConverterJobStatus.processing) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        status = await client.getJob(job.jobId);
+      }
+
+      if (status == ConverterJobStatus.failed) {
+        throw StateError('Railway converter job failed');
+      }
+
+      final packageFile = await client.downloadPackage(
+        job.jobId,
+        Directory(p.join(appDirectory.path, 'packages', document.id)),
+      );
+      final payload =
+          jsonDecode(await packageFile.readAsString()) as Map<String, Object?>;
+      final convertedPackage = DocumentPackage.fromJson(payload);
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _packagesByDocumentId[document.id] = convertedPackage;
+        _replaceDocumentStatus(document.id, '변환 완료');
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${document.sourceFilename} 변환 완료')),
+      );
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _replaceDocumentStatus(document.id, '서버 변환 실패 - 임시 보기');
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('서버 변환 실패: $error')),
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  void _replaceDocumentStatus(String documentId, String status) {
+    final index = _documents.indexWhere((document) => document.id == documentId);
+    if (index == -1) {
+      return;
+    }
+
+    final document = _documents[index];
+    _documents[index] = LibraryDocumentViewModel(
+      id: document.id,
+      title: document.title,
+      conversionStatus: status,
+      lastReadProgress: document.lastReadProgress,
+    );
+  }
+
   DocumentPackage _buildImportedPdfPackage(DocumentRecord document) {
     return DocumentPackage(
       packageVersion: 1,
@@ -150,7 +224,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
         DocumentBlock.paragraph(
           id: 'import-message',
           sectionId: 'import',
-          text: 'PDF를 앱에 가져왔습니다. 논문 본문을 카카오페이지식 리더로 보려면 Railway 변환 서버 연결 또는 온디바이스 변환 연결이 필요합니다.',
+          text: 'PDF를 앱에 가져왔습니다. 서버 변환이 끝나면 논문 본문이 리더 형식으로 표시됩니다.',
         ),
       ],
       assets: const [],
