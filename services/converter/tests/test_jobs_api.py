@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -84,7 +85,12 @@ def test_download_returns_valid_package_zip_after_fixture_conversion(tmp_path):
     assert status.json()['status'] == 'succeeded'
     assert download.status_code == 200
     with ZipFile(BytesIO(download.content)) as archive:
-        assert 'package.json' in archive.namelist()
+        names = archive.namelist()
+        assert 'package.json' in names
         assert 'assets/' in archive.namelist() or any(
-            name.startswith('assets/') for name in archive.namelist()
+            name.startswith('assets/') for name in names
         )
+        package = json.loads(archive.read('package.json'))
+        assert package['assets']
+        for asset in package['assets']:
+            assert asset['relativePath'] in names

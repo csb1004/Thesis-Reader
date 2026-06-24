@@ -10,3 +10,6 @@ def test_converts_simple_pdf_to_document_package(tmp_path):
     assert package.metadata.title == "A Small Paper"
     assert any(block.text and "Figure 1" in block.text for block in package.blocks)
     assert output_dir.exists()
+    assert package.assets
+    for asset in package.assets:
+        assert (output_dir / asset.relativePath).is_file()
