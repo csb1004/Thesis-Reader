@@ -1,6 +1,10 @@
+import 'dart:ui';
+
 enum ReadingMode { page, scroll }
 
 enum AssetOpenMode { bottomSheet, fullScreen }
+
+const Object _unset = Object();
 
 final class ReaderSettings {
   const ReaderSettings({
@@ -23,7 +27,7 @@ final class ReaderSettings {
 
   ReaderSettings copyWith({
     String? themeId,
-    String? fontFamily,
+    Object? fontFamily = _unset,
     double? fontScale,
     double? lineHeight,
     double? marginScale,
@@ -32,12 +36,95 @@ final class ReaderSettings {
   }) {
     return ReaderSettings(
       themeId: themeId ?? this.themeId,
-      fontFamily: fontFamily ?? this.fontFamily,
+      fontFamily: fontFamily == _unset
+          ? this.fontFamily
+          : fontFamily as String?,
       fontScale: fontScale ?? this.fontScale,
       lineHeight: lineHeight ?? this.lineHeight,
       marginScale: marginScale ?? this.marginScale,
       readingMode: readingMode ?? this.readingMode,
       assetOpenMode: assetOpenMode ?? this.assetOpenMode,
     );
+  }
+}
+
+final class ReaderThemeData {
+  const ReaderThemeData({
+    required this.id,
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  final String id;
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+}
+
+abstract final class ReaderThemeCatalog {
+  static const themes = [
+    ReaderThemeData(
+      id: 'paper',
+      label: 'Paper',
+      backgroundColor: Color(0xFFFFF8ED),
+      textColor: Color(0xFF252018),
+    ),
+    ReaderThemeData(
+      id: 'cream',
+      label: 'Cream',
+      backgroundColor: Color(0xFFF5ECD8),
+      textColor: Color(0xFF31271D),
+    ),
+    ReaderThemeData(
+      id: 'green',
+      label: 'Green',
+      backgroundColor: Color(0xFFEAF2E3),
+      textColor: Color(0xFF1D2A21),
+    ),
+    ReaderThemeData(
+      id: 'dark',
+      label: 'Dark',
+      backgroundColor: Color(0xFF171717),
+      textColor: Color(0xFFECE6DA),
+    ),
+  ];
+
+  static ReaderThemeData resolve(String themeId) {
+    for (final theme in themes) {
+      if (theme.id == themeId) {
+        return theme;
+      }
+    }
+    return themes.first;
+  }
+}
+
+final class ReaderFontOption {
+  const ReaderFontOption({
+    required this.id,
+    required this.label,
+    required this.fontFamily,
+  });
+
+  final String id;
+  final String label;
+  final String? fontFamily;
+}
+
+abstract final class ReaderFontCatalog {
+  static const fonts = [
+    ReaderFontOption(id: 'system', label: 'System', fontFamily: null),
+    ReaderFontOption(id: 'serif', label: 'Serif', fontFamily: 'serif'),
+    ReaderFontOption(id: 'monospace', label: 'Mono', fontFamily: 'monospace'),
+  ];
+
+  static String idFor(String? fontFamily) {
+    for (final font in fonts) {
+      if (font.fontFamily == fontFamily) {
+        return font.id;
+      }
+    }
+    return fonts.first.id;
   }
 }

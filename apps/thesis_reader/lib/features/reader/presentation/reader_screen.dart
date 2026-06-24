@@ -10,12 +10,14 @@ final class ReaderProgress {
     this.pageIndex,
     this.pageCount,
     this.scrollOffset,
+    this.scrollProgress,
   });
 
   final String documentId;
   final int? pageIndex;
   final int? pageCount;
   final double? scrollOffset;
+  final double? scrollProgress;
 }
 
 final class ReaderScreen extends StatefulWidget {
@@ -45,14 +47,11 @@ final class _ReaderScreenState extends State<ReaderScreen> {
   void initState() {
     super.initState();
     _settings = widget.initialSettings;
-    _scrollController.addListener(_handleScrollProgress);
   }
 
   @override
   void dispose() {
-    _scrollController
-      ..removeListener(_handleScrollProgress)
-      ..dispose();
+    _scrollController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -87,30 +86,56 @@ final class _ReaderScreenState extends State<ReaderScreen> {
             height: constraints.maxHeight,
           ),
         );
+        final readerTheme = ReaderThemeCatalog.resolve(_settings.themeId);
 
-        return switch (_settings.readingMode) {
-          ReadingMode.page => _PageModeReader(
-            package: package,
-            layout: layout,
-            settings: _settings,
-            controller: _pageController,
-            onPageChanged: (pageIndex) {
-              widget.onProgressChanged?.call(
-                ReaderProgress(
-                  documentId: widget.documentId,
-                  pageIndex: pageIndex,
-                  pageCount: layout.pages.length,
-                ),
-              );
-            },
-          ),
-          ReadingMode.scroll => _ScrollModeReader(
-            package: package,
-            settings: _settings,
-            controller: _scrollController,
-          ),
-        };
+        return ColoredBox(
+          key: const Key('reader-theme-background'),
+          color: readerTheme.backgroundColor,
+          child: switch (_settings.readingMode) {
+            ReadingMode.page => _PageModeReader(
+              package: package,
+              layout: layout,
+              settings: _settings,
+              readerTheme: readerTheme,
+              controller: _pageController,
+              onPageChanged: (pageIndex) {
+                widget.onProgressChanged?.call(
+                  ReaderProgress(
+                    documentId: widget.documentId,
+                    pageIndex: pageIndex,
+                    pageCount: layout.pages.length,
+                  ),
+                );
+              },
+            ),
+            ReadingMode.scroll => _ScrollModeReader(
+              package: package,
+              settings: _settings,
+              readerTheme: readerTheme,
+              controller: _scrollController,
+              onScrollEnded: _handleScrollEnd,
+            ),
+          },
+        );
       },
+    );
+  }
+
+  void _handleScrollEnd(ScrollMetrics metrics) {
+    if (_settings.readingMode != ReadingMode.scroll) {
+      return;
+    }
+
+    final scrollProgress = metrics.maxScrollExtent <= 0
+        ? 0.0
+        : (metrics.pixels / metrics.maxScrollExtent).clamp(0.0, 1.0);
+
+    widget.onProgressChanged?.call(
+      ReaderProgress(
+        documentId: widget.documentId,
+        scrollOffset: metrics.pixels,
+        scrollProgress: scrollProgress,
+      ),
     );
   }
 
@@ -133,19 +158,6 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       },
     );
   }
-
-  void _handleScrollProgress() {
-    if (_settings.readingMode != ReadingMode.scroll ||
-        !_scrollController.hasClients) {
-      return;
-    }
-    widget.onProgressChanged?.call(
-      ReaderProgress(
-        documentId: widget.documentId,
-        scrollOffset: _scrollController.offset,
-      ),
-    );
-  }
 }
 
 final class _PageModeReader extends StatelessWidget {
@@ -153,6 +165,7 @@ final class _PageModeReader extends StatelessWidget {
     required this.package,
     required this.layout,
     required this.settings,
+    required this.readerTheme,
     required this.controller,
     required this.onPageChanged,
   });
@@ -160,6 +173,7 @@ final class _PageModeReader extends StatelessWidget {
   final DocumentPackage package;
   final ReaderLayoutResult layout;
   final ReaderSettings settings;
+  final ReaderThemeData readerTheme;
   final PageController controller;
   final ValueChanged<int> onPageChanged;
 
@@ -178,12 +192,18 @@ final class _PageModeReader extends StatelessWidget {
           children: [
             for (final blockId in page.blockIds)
               if (blocksById[blockId] case final block?)
-                _ReaderBlock(block: block, settings: settings),
+                _ReaderBlock(
+                  block: block,
+                  settings: settings,
+                  readerTheme: readerTheme,
+                ),
             Align(
               alignment: Alignment.centerRight,
               child: Text(
                 '${page.pageNumber} / ${layout.pages.length}',
-                style: Theme.of(context).textTheme.labelSmall,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: readerTheme.textColor.withValues(alpha: 0.7),
+                ),
               ),
             ),
           ],
@@ -197,40 +217,56 @@ final class _ScrollModeReader extends StatelessWidget {
   const _ScrollModeReader({
     required this.package,
     required this.settings,
+    required this.readerTheme,
     required this.controller,
+    required this.onScrollEnded,
   });
 
   final DocumentPackage package;
   final ReaderSettings settings;
+  final ReaderThemeData readerTheme;
   final ScrollController controller;
+  final ValueChanged<ScrollMetrics> onScrollEnded;
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      controller: controller,
-      slivers: [
-        SliverPadding(
-          padding: EdgeInsets.all(24 * settings.marginScale),
-          sliver: SliverList.builder(
-            itemCount: package.blocks.length,
-            itemBuilder: (context, index) {
-              return _ReaderBlock(
-                block: package.blocks[index],
-                settings: settings,
-              );
-            },
+    return NotificationListener<ScrollEndNotification>(
+      onNotification: (notification) {
+        onScrollEnded(notification.metrics);
+        return false;
+      },
+      child: CustomScrollView(
+        controller: controller,
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.all(24 * settings.marginScale),
+            sliver: SliverList.builder(
+              itemCount: package.blocks.length,
+              itemBuilder: (context, index) {
+                return _ReaderBlock(
+                  block: package.blocks[index],
+                  settings: settings,
+                  readerTheme: readerTheme,
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 final class _ReaderBlock extends StatelessWidget {
-  const _ReaderBlock({required this.block, required this.settings});
+  const _ReaderBlock({
+    required this.block,
+    required this.settings,
+    required this.readerTheme,
+  });
 
   final DocumentBlock block;
   final ReaderSettings settings;
+  final ReaderThemeData readerTheme;
 
   @override
   Widget build(BuildContext context) {
@@ -238,12 +274,13 @@ final class _ReaderBlock extends StatelessWidget {
       fontFamily: settings.fontFamily,
       fontSize: 16 * settings.fontScale,
       height: settings.lineHeight,
+      color: readerTheme.textColor,
     );
 
     if (block.text case final text?) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
-        child: Text(text, style: textStyle),
+        child: SelectableText(text, style: textStyle),
       );
     }
 
@@ -253,7 +290,11 @@ final class _ReaderBlock extends StatelessWidget {
         dense: true,
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.image_outlined),
-        title: Text(block.assetId ?? block.kind.name),
+        iconColor: readerTheme.textColor,
+        title: Text(
+          block.assetId ?? block.kind.name,
+          style: TextStyle(color: readerTheme.textColor),
+        ),
       ),
     );
   }
