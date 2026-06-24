@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -40,7 +41,7 @@ class HttpConverterClient implements ConverterClient {
   @override
   Future<ConverterJob> createJob(File pdf) async {
     final request = http.MultipartRequest('POST', _baseUri.resolve('/jobs'))
-      ..files.add(await http.MultipartFile.fromPath('pdf', pdf.path));
+      ..files.add(await http.MultipartFile.fromPath('file', pdf.path));
 
     final response = await _httpClient.send(request);
     final body = await response.stream.bytesToString();
@@ -69,12 +70,34 @@ class HttpConverterClient implements ConverterClient {
     );
     _throwIfUnsuccessful(response.statusCode, response.body);
 
-    await targetDirectory.create(recursive: true);
-    final packageFile = File(
-      p.join(targetDirectory.path, '$jobId-package.json'),
-    );
-    return packageFile.writeAsBytes(response.bodyBytes);
+    final packageDirectory = Directory(p.join(targetDirectory.path, jobId));
+    await packageDirectory.create(recursive: true);
+
+    final archive = ZipDecoder().decodeBytes(response.bodyBytes);
+    for (final archiveFile in archive.files) {
+      if (!archiveFile.isFile) {
+        continue;
+      }
+
+      final outputFile = File(
+        p.joinAll([
+          packageDirectory.path,
+          ..._safeArchivePathSegments(archiveFile.name),
+        ]),
+      );
+      await outputFile.parent.create(recursive: true);
+      await outputFile.writeAsBytes(archiveFile.content as List<int>);
+    }
+
+    final packageFile = File(p.join(packageDirectory.path, 'package.json'));
+    if (!packageFile.existsSync()) {
+      throw const FormatException('Converter package zip missing package.json');
+    }
+
+    return packageFile;
   }
+
+  void close() => _httpClient.close();
 
   Map<String, Object?> _decodeJsonObject(String body) {
     final decoded = jsonDecode(body);
@@ -107,6 +130,20 @@ class HttpConverterClient implements ConverterClient {
     }
 
     throw ConverterClientException(statusCode: statusCode, body: body);
+  }
+
+  List<String> _safeArchivePathSegments(String archivePath) {
+    final normalized = p.url.normalize(archivePath.replaceAll(r'\', '/'));
+    if (p.url.isAbsolute(normalized) ||
+        normalized == '..' ||
+        normalized.startsWith('../')) {
+      throw FormatException('Unsafe converter package path: $archivePath');
+    }
+
+    return normalized
+        .split('/')
+        .where((segment) => segment.isNotEmpty)
+        .toList();
   }
 }
 

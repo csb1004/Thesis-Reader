@@ -9,15 +9,18 @@ class ConversionOrchestrator {
     required ConverterClient serverClient,
     required OnDeviceConverter fallbackConverter,
     Duration serverTimeout = const Duration(seconds: 10),
+    Duration pollInterval = const Duration(milliseconds: 500),
     Directory? packageDirectory,
   }) : _serverClient = serverClient,
        _fallbackConverter = fallbackConverter,
        _serverTimeout = serverTimeout,
+       _pollInterval = pollInterval,
        _packageDirectory = packageDirectory;
 
   final ConverterClient _serverClient;
   final OnDeviceConverter _fallbackConverter;
   final Duration _serverTimeout;
+  final Duration _pollInterval;
   final Directory? _packageDirectory;
 
   Future<ConversionResult> start(File pdf, {required String documentId}) async {
@@ -37,13 +40,15 @@ class ConversionOrchestrator {
       throw ConversionServerException('Converter job failed: ${job.jobId}');
     }
 
-    if (job.status != ConverterJobStatus.succeeded) {
-      final status = await _serverClient.getJob(job.jobId);
-      if (status != ConverterJobStatus.succeeded) {
-        throw ConversionServerException(
-          'Converter job did not complete: ${job.jobId}',
-        );
-      }
+    var status = job.status;
+    while (status == ConverterJobStatus.queued ||
+        status == ConverterJobStatus.processing) {
+      await Future<void>.delayed(_pollInterval);
+      status = await _serverClient.getJob(job.jobId);
+    }
+
+    if (status == ConverterJobStatus.failed) {
+      throw ConversionServerException('Converter job failed: ${job.jobId}');
     }
 
     final package = await _serverClient.downloadPackage(
