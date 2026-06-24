@@ -121,7 +121,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(package?.metadata.title ?? 'Reader'),
+        title: Text(package?.metadata.title ?? '리더'),
         actions: [
           if (package != null)
             IconButton(
@@ -137,7 +137,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
             ),
           if (package != null)
             IconButton(
-              tooltip: '리더 설정',
+              tooltip: '보기 설정',
               icon: const Icon(Icons.tune),
               onPressed: _showSettings,
             ),
@@ -995,7 +995,7 @@ final class _ReferenceSelectableTextState
               },
       ),
       ContextMenuButtonItem(
-        label: '단어장 추가',
+        label: '단어장에 추가',
         onPressed: selectedText.isEmpty
             ? null
             : () {
@@ -1102,7 +1102,10 @@ final class _AssetDetailPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(asset.label, style: textTheme.titleLarge),
-                    Text(asset.kind.name, style: textTheme.labelMedium),
+                    Text(
+                      _assetKindLabel(asset.kind),
+                      style: textTheme.labelMedium,
+                    ),
                   ],
                 ),
               ),
@@ -1160,7 +1163,7 @@ final class _AssetPreview extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Text(
-                    '자산 미리보기를 사용할 수 없습니다.\n$path',
+                    '그림 미리보기를 사용할 수 없습니다.\n$path',
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -1223,6 +1226,16 @@ final class _OriginalPdfFallbackState extends State<_OriginalPdfFallback> {
 String _fileExtension(String path) {
   final index = path.lastIndexOf('.');
   return index == -1 ? '' : path.substring(index).toLowerCase();
+}
+
+String _assetKindLabel(AssetKind kind) {
+  return switch (kind) {
+    AssetKind.figure => '그림',
+    AssetKind.table => '표',
+    AssetKind.equation => '수식',
+    AssetKind.pageRegion => '페이지 영역',
+    AssetKind.thumbnail => '미리보기',
+  };
 }
 
 bool _isSingleExpression(String expression) {

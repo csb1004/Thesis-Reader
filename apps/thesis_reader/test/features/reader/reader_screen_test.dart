@@ -182,9 +182,9 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.tune));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Scroll'));
+    await tester.tap(find.text('스크롤'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Page'));
+    await tester.tap(find.text('페이지'));
     await tester.pumpAndSettle();
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -273,7 +273,7 @@ void main() {
 
     expect(find.byKey(const Key('reader-asset-fullscreen')), findsOneWidget);
     expect(find.text('Figure 1'), findsWidgets);
-    expect(find.text('figure'), findsOneWidget);
+    expect(find.text('그림'), findsOneWidget);
   });
 
   testWidgets('ignores invalid and missing-target reference spans', (
