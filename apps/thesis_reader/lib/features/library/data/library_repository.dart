@@ -155,9 +155,17 @@ class DriftLibraryRepository implements LibraryRepository {
 
   @override
   Future<void> deleteDocument(String documentId) async {
-    await (_database.delete(
-      _database.documents,
-    )..where((document) => document.id.equals(documentId))).go();
+    await _database.transaction(() async {
+      await (_database.delete(
+        _database.vocabularyEntries,
+      )..where((entry) => entry.documentId.equals(documentId))).go();
+      await (_database.delete(
+        _database.viewerSettings,
+      )..where((settings) => settings.documentId.equals(documentId))).go();
+      await (_database.delete(
+        _database.documents,
+      )..where((document) => document.id.equals(documentId))).go();
+    });
   }
 
   String _normalizeName(String name) {

@@ -50,4 +50,52 @@ void main() {
     expect(documents.single.title, 'Attention');
     expect(documents.single.folderId, folder.id);
   });
+
+  test('deletes a document with vocabulary and viewer settings', () async {
+    final now = DateTime.utc(2026);
+    await database
+        .into(database.documents)
+        .insert(
+          DocumentsCompanion.insert(
+            id: 'doc-1',
+            title: 'paper.pdf',
+            sourceFilename: 'paper.pdf',
+            localPdfPath: '/tmp/paper.pdf',
+            status: 'converted',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await database
+        .into(database.vocabularyEntries)
+        .insert(
+          VocabularyEntriesCompanion.insert(
+            id: 'vocab-1',
+            documentId: 'doc-1',
+            expressionKey: 'self-attention',
+            expression: 'self-attention',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await database
+        .into(database.viewerSettings)
+        .insert(
+          ViewerSettingsCompanion.insert(
+            documentId: 'doc-1',
+            readingMode: 'page',
+            themeId: 'light',
+            fontScale: 1,
+            lineHeight: 1.5,
+            marginScale: 1,
+            assetOpenMode: 'bottomSheet',
+          ),
+        );
+
+    await repository.deleteDocument('doc-1');
+
+    expect(await database.select(database.documents).get(), isEmpty);
+    expect(await database.select(database.vocabularyEntries).get(), isEmpty);
+    expect(await database.select(database.viewerSettings).get(), isEmpty);
+  });
 }
