@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
@@ -218,6 +217,9 @@ class _LibraryHomeState extends State<_LibraryHome> {
     final settings =
         _settingsByDocumentId[documentId] ??
         await _appReaderSettingsRepository.load(documentId);
+    if (!mounted) {
+      return;
+    }
     _settingsByDocumentId[documentId] = settings;
     final readablePackage =
         package?.metadata.converterVersion == 'app-shell-import-placeholder'
@@ -752,15 +754,11 @@ class _LibraryHomeState extends State<_LibraryHome> {
     final scrollProgressByDocumentId = <String, double>{};
 
     for (final row in rows) {
-      final packageDirectory = Directory(
-        p.join(appDirectory.path, 'packages', row.id),
-      );
       final loadedPackage = await DocumentPackageLoader.load(
         documentId: row.id,
         appDirectory: appDirectory,
         storedPackagePath: row.packagePath,
       );
-      final hasPackage = loadedPackage != null;
       if (loadedPackage != null) {
         packagesByDocumentId[row.id] = _withDisplayTitle(
           loadedPackage.package,
@@ -782,7 +780,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
         LibraryDocumentViewModel(
           id: row.id,
           title: row.title,
-          conversionStatus: packageFile.existsSync() ? '변환 완료' : '원본 PDF 보기',
+          conversionStatus: loadedPackage != null ? '변환 완료' : '원본 PDF 보기',
           lastReadProgress: progress,
           folderId: row.folderId,
         ),
