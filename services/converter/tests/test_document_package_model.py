@@ -47,6 +47,17 @@ def test_minimal_document_package_serializes_to_contract_keys():
 
     payload = package.model_dump(mode="json")
 
+    assert {
+        "packageVersion",
+        "documentId",
+        "metadata",
+        "sections",
+        "blocks",
+        "assets",
+    } <= payload.keys()
+    assert payload["anchors"] == []
+    assert payload["vocabulary"] == []
+    assert payload["summaries"] == []
     assert payload["packageVersion"] == 1
     assert payload["metadata"]["sourceFilename"] == "paper.pdf"
     assert payload["blocks"][0]["kind"] == "paragraph"
