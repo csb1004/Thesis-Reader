@@ -1,6 +1,8 @@
-# Thesis Reader
+# Thesis Reader MVP
 
-Thesis Reader is an MVP Flutter app for importing academic PDFs, converting them into a structured local document package, and reading them with study tools such as translation, summarization, vocabulary capture, progress restore, and reference asset viewing.
+Thesis Reader is an MVP monorepo for academic PDF reading experiments. This branch contains the main building blocks for a Flutter reader app, a shared document package contract, and a FastAPI converter service, but the top-level Flutter app shell is not yet a complete end-to-end product flow.
+
+Current app work is best understood as component and service slices: library/import status screens, reader rendering controls, AI service clients, vocabulary persistence repositories, document package parsing, and server/on-device conversion orchestration. The default app shell still launches mostly unbound screens, so import, conversion, package loading, AI actions, vocabulary capture, and progress persistence need integration work before a tester can complete the whole workflow from one UI session.
 
 The repository is a small monorepo:
 
@@ -8,7 +10,7 @@ The repository is a small monorepo:
 - `packages/document_contract`: shared Dart package for the document package contract.
 - `services/converter`: FastAPI PDF converter that emits cached document packages.
 - `docs/contracts`: JSON schema for the converter package format.
-- `docs/testing/manual-mvp-checklist.md`: manual end-to-end MVP verification checklist.
+- `docs/testing/manual-mvp-checklist.md`: component/service verification checklist for the current MVP branch.
 
 ## Local Development
 
@@ -79,9 +81,15 @@ Health checks use `/health`.
 
 ## Current Limitations
 
+- The Flutter app shell does not yet wire the full workflow together. The library screen is launched without repository data or import/document callbacks, the import status route uses default placeholder state, and the reader route is not loading a document package by `documentId`.
+- Converter base URL configuration exists at the service-client level, but there is no in-app settings flow that lets a tester switch between local and hosted converter URLs.
+- File picker import, server/fallback conversion orchestration, cached package reopening, and package-to-reader loading are implemented as services or screen inputs, not as one integrated UI path.
+- AI translation and summary services exist, but selected-text reader actions are not wired into the reader UI.
+- Vocabulary repositories and list/edit UI exist, but adding selected reader text to vocabulary and deleting vocabulary entries are not wired into the app shell.
+- Reader progress callbacks exist, but progress is not persisted and restored through the shell.
 - The converter job store is in-memory with local filesystem output; jobs are not durable across process restarts.
 - Conversion is synchronous when a job is polled, so large PDFs can block a request during MVP testing.
 - Only PDF uploads are supported by the converter.
-- Server conversion falls back to the app's on-device path when the server is unavailable or times out.
-- AI translation, summarization, and word meaning require a valid OpenAI API key configured in the app.
+- Server conversion fallback exists in `ConversionOrchestrator`, but the default app UI does not currently drive it.
+- AI translation, summarization, and word meaning require a valid OpenAI API key when exercised through the service layer.
 - Android volume-key paging requires testing on an Android device or emulator.
