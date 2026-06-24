@@ -376,13 +376,11 @@ final class _ReferenceSelectableTextState
   Widget build(BuildContext context) {
     _disposeRecognizers();
 
-    final validSpans = [
-      for (final span in _validReferenceSpans(
-        widget.text,
-        widget.referenceSpans,
-      ))
+    final existingTargetSpans = [
+      for (final span in widget.referenceSpans)
         if (widget.assetsById.containsKey(span.targetAssetId)) span,
     ];
+    final validSpans = _validReferenceSpans(widget.text, existingTargetSpans);
 
     if (validSpans.isEmpty) {
       return SelectableText(widget.text, style: widget.style);

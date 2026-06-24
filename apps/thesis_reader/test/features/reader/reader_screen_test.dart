@@ -167,6 +167,43 @@ void main() {
     expect(selectable.data, _referenceText);
     expect(selectable.textSpan, isNull);
   });
+
+  testWidgets('missing-target overlaps do not suppress later valid references', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _package(
+            referenceSpans: const [
+              ReferenceSpan(
+                start: 19,
+                end: 31,
+                targetAssetId: 'missing',
+                kind: ReferenceKind.figure,
+              ),
+              ReferenceSpan(
+                start: 21,
+                end: 29,
+                targetAssetId: 'figure-1',
+                kind: ReferenceKind.figure,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+    final referenceSpan = selectable.textSpan!.children!
+        .whereType<TextSpan>()
+        .singleWhere((span) => span.text == 'Figure 1');
+
+    expect(referenceSpan.recognizer, isNotNull);
+  });
 }
 
 DocumentPackage _packageWithBlocks(List<String> texts) {
