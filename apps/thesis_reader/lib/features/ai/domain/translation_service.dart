@@ -47,7 +47,7 @@ class TranslationService {
           type: TranslationActionType.wordMeaning,
           sourceText: expression,
           koreanText: koreanText,
-          shouldAutoSave: true,
+          shouldAutoSave: _isSingleWord(expression),
           canAddToVocabulary: true,
         ),
       ),
@@ -96,5 +96,9 @@ class TranslationService {
           body: body,
         ),
     };
+  }
+
+  bool _isSingleWord(String expression) {
+    return expression.trim().split(RegExp(r'\s+')).length == 1;
   }
 }

@@ -29,6 +29,27 @@ void main() {
     expect(action.canAddToVocabulary, isTrue);
   });
 
+  test('phrase meaning is not auto-saved but can be added later', () async {
+    final service = TranslationService(
+      openAiClient: OpenAiClient(
+        keyStore: const FakeKeyStore('sk-test'),
+        httpClient: FakeTextClient('媛먯븞?섎떎'),
+      ),
+    );
+
+    final result = await service.explainWord(
+      expression: 'in light of',
+      sourceSentence: 'In light of these findings, we revise the model.',
+    );
+
+    expect(result, isA<AiSuccess<TranslationAction>>());
+    final action = (result as AiSuccess<TranslationAction>).value;
+    expect(action.type, TranslationActionType.wordMeaning);
+    expect(action.sourceText, 'in light of');
+    expect(action.shouldAutoSave, isFalse);
+    expect(action.canAddToVocabulary, isTrue);
+  });
+
   test(
     'selection translation is not auto-saved but can be added later',
     () async {
