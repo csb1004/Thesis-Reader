@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:thesis_reader/features/library/presentation/import_status_screen.dart';
 import 'package:thesis_reader/features/library/presentation/library_screen.dart';
+import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
 
 final GoRouter _router = GoRouter(
   routes: [
@@ -15,7 +16,7 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/reader/:documentId',
       builder: (context, state) =>
-          const Scaffold(body: Center(child: Text('리더 준비 중'))),
+          ReaderScreen(documentId: state.pathParameters['documentId'] ?? ''),
     ),
   ],
 );
