@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from services.converter.app.conversion.pdf_converter import convert_pdf_to_package
 from services.converter.app.jobs.models import JobSnapshot, JobStatus
 
 
@@ -38,6 +39,32 @@ class JobStore:
             return self._jobs[job_id]
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Job not found") from exc
+
+    def source_path(self, job_id: str) -> Path:
+        return self._data_dir / job_id / "source.pdf"
+
+    def package_dir(self, job_id: str) -> Path:
+        return self._data_dir / job_id / "package"
+
+    def convert(self, job_id: str) -> JobSnapshot:
+        snapshot = self.get_or_404(job_id)
+        if snapshot.status in {JobStatus.succeeded, JobStatus.failed}:
+            return snapshot
+
+        self._jobs[job_id] = JobSnapshot(jobId=job_id, status=JobStatus.processing)
+        try:
+            convert_pdf_to_package(
+                pdf_path=self.source_path(job_id),
+                output_dir=self.package_dir(job_id),
+                document_id=job_id,
+            )
+        except Exception as exc:
+            snapshot = JobSnapshot(jobId=job_id, status=JobStatus.failed, error=str(exc))
+        else:
+            snapshot = JobSnapshot(jobId=job_id, status=JobStatus.succeeded)
+
+        self._jobs[job_id] = snapshot
+        return snapshot
 
 
 job_store = JobStore()
