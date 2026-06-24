@@ -943,6 +943,10 @@ class $VocabularyEntriesTable extends VocabularyEntries
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {documentId, expressionKey},
+  ];
+  @override
   VocabularyEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return VocabularyEntry(
