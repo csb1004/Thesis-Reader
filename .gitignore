@@ -1,5 +1,6 @@
 .superpowers/
 .worktrees/
 services/converter/.venv/
+services/converter/.data/
 __pycache__/
 .pytest_cache/
