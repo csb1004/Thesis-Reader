@@ -61,7 +61,7 @@ void main() {
       expect(capturedRequest?.headers['content-type'], 'application/json');
 
       final body = jsonDecode(capturedRequest!.body) as Map<String, Object?>;
-      expect(body['model'], defaultOpenAiModel);
+      expect(body['model'], 'gpt-5.1-mini');
       expect(body['instructions'], contains('Korean'));
       expect(body['input'], contains('Target expression'));
       expect(body['input'], contains('salient'));

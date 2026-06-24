@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
 
-const defaultOpenAiModel = 'gpt-5.4-mini';
+const defaultOpenAiModel = 'gpt-5.1-mini';
 
 enum AiFailureKind { missingKey, network, apiError, invalidResponse }
 
