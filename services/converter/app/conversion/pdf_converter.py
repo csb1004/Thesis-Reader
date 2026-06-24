@@ -29,7 +29,9 @@ REFERENCE_PATTERNS = (
 def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -> DocumentPackage:
     lines = _extract_lines(pdf_path)
     title = next((line["text"] for line in lines if line["text"]), pdf_path.stem)
-    body_lines = [line for line in lines if line["text"] and line["text"] != title]
+    body_lines = _merge_lines_into_paragraphs(
+        [line for line in lines if line["text"] and line["text"] != title]
+    )
 
     section_id = "sec-1"
     blocks: list[DocumentBlock] = []
@@ -97,6 +99,71 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
 
 def _split_lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
+    paragraphs: list[dict] = []
+    current: dict | None = None
+
+    for line in lines:
+        if current is None:
+            current = dict(line)
+            continue
+
+        if _should_merge_lines(current, line):
+            current["text"] = _join_wrapped_text(current["text"], line["text"])
+            current["rect"] = _union_rect(current["rect"], line["rect"])
+        else:
+            paragraphs.append(current)
+            current = dict(line)
+
+    if current is not None:
+        paragraphs.append(current)
+
+    return paragraphs
+
+
+def _should_merge_lines(previous: dict, current: dict) -> bool:
+    if previous["page"] != current["page"]:
+        return False
+    if _looks_like_heading(previous["text"]):
+        return False
+
+    previous_rect = previous["rect"]
+    current_rect = current["rect"]
+    if _same_text_block(previous_rect, current_rect):
+        return True
+
+    vertical_gap = current_rect[1] - previous_rect[3]
+    return -4 <= vertical_gap <= 24
+
+
+def _same_text_block(left: list[float], right: list[float]) -> bool:
+    return all(abs(left[index] - right[index]) < 0.5 for index in range(4))
+
+
+def _looks_like_heading(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped.endswith((".", ",", ";", ":")):
+        return False
+    return len(stripped.split()) <= 4
+
+
+def _join_wrapped_text(previous: str, current: str) -> str:
+    if previous.endswith("-"):
+        return previous[:-1] + current
+    return f"{previous} {current}"
+
+
+def _union_rect(left: list[float], right: list[float]) -> list[float]:
+    return [
+        min(left[0], right[0]),
+        min(left[1], right[1]),
+        max(left[2], right[2]),
+        max(left[3], right[3]),
+    ]
 
 
 def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> list[ReferenceSpan]:
