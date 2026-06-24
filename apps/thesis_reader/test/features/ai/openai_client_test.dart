@@ -7,6 +7,17 @@ import 'package:thesis_reader/features/ai/data/openai_client.dart';
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
 
 void main() {
+  test('uses the officially documented default OpenAI model', () {
+    // Verified against https://developers.openai.com/api/docs/models.
+    expect(defaultOpenAiModel, 'gpt-5.4-mini');
+  });
+
+  test('allows request-level model override', () {
+    const request = OpenAiRequest(input: 'hello', model: 'custom-model');
+
+    expect(request.toJson()['model'], 'custom-model');
+  });
+
   test(
     'returns missingKey without issuing a request when key is absent',
     () async {
@@ -61,7 +72,7 @@ void main() {
       expect(capturedRequest?.headers['content-type'], 'application/json');
 
       final body = jsonDecode(capturedRequest!.body) as Map<String, Object?>;
-      expect(body['model'], 'gpt-5.1-mini');
+      expect(body['model'], defaultOpenAiModel);
       expect(body['instructions'], contains('Korean'));
       expect(body['input'], contains('Target expression'));
       expect(body['input'], contains('salient'));
