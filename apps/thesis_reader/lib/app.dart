@@ -243,6 +243,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
           onProgressChanged: _handleReaderProgress,
           onSettingsChanged: (settings) {
             _settingsByDocumentId[documentId] = settings;
+            unawaited(_appReaderSettingsRepository.saveDefaults(settings));
             unawaited(
               _appReaderSettingsRepository.save(
                 documentId: documentId,

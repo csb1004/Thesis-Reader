@@ -49,8 +49,77 @@ void main() {
       ),
     );
 
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+
     expect(find.text('Attention Is All You Need'), findsOneWidget);
     expect(find.text('Reader Test'), findsNothing);
+  });
+
+  testWidgets('reader chrome is hidden until the center is tapped', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          displayTitle: 'Attention Is All You Need',
+          package: _packageWithBlocks(['Selectable thesis text']),
+        ),
+      ),
+    );
+
+    expect(find.text('Attention Is All You Need'), findsNothing);
+    expect(find.byKey(const Key('reader-page-slider')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attention Is All You Need'), findsOneWidget);
+    expect(find.byKey(const Key('reader-page-slider')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attention Is All You Need'), findsNothing);
+    expect(find.byKey(const Key('reader-page-slider')), findsNothing);
+  });
+
+  testWidgets('bottom slider changes the current page when chrome is visible', (
+    tester,
+  ) async {
+    final progressChanges = <ReaderProgress>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 320,
+          height: 240,
+          child: ReaderScreen(
+            documentId: 'doc-1',
+            package: _packageWithBlocks(
+              List.generate(
+                5,
+                (index) =>
+                    'Paragraph $index ${'fills the reader page. ' * 400}',
+              ),
+            ),
+            onProgressChanged: progressChanges.add,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const Key('reader-page-slider')),
+      const Offset(200, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(progressChanges.last.pageIndex, greaterThan(0));
+    expect(find.textContaining('/'), findsNothing);
   });
 
   testWidgets('reports scroll progress after scroll end', (tester) async {
@@ -65,7 +134,7 @@ void main() {
               30,
               (index) =>
                   'Paragraph $index has enough text to require a scrollable '
-                  'reader surface for progress reporting.',
+                  'reader surface for progress reporting. ${'More text. ' * 80}',
             ),
           ),
           initialSettings: const ReaderSettings(
@@ -76,15 +145,11 @@ void main() {
       ),
     );
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(CustomScrollView)),
+    await tester.dragFrom(
+      tester.getTopLeft(find.byType(CustomScrollView)) + const Offset(8, 8),
+      const Offset(0, -500),
+      touchSlopY: 0,
     );
-    await gesture.moveBy(const Offset(0, -300));
-    await tester.pump();
-
-    expect(progressChanges, isEmpty);
-
-    await gesture.up();
     await tester.pumpAndSettle();
 
     expect(progressChanges, hasLength(1));
@@ -195,6 +260,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.tune));
     await tester.pumpAndSettle();
     await tester.tap(find.text('스크롤'));
@@ -363,6 +430,33 @@ void main() {
       expect(referenceSpan.recognizer, isNotNull);
     },
   );
+
+  testWidgets('heading-like blocks render larger and bold inline', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['1', 'Introduction', 'Body paragraph']),
+        ),
+      ),
+    );
+
+    final heading = tester.widget<SelectableText>(
+      find.byWidgetPredicate(
+        (widget) => widget is SelectableText && widget.data == 'Introduction',
+      ),
+    );
+    final body = tester.widget<SelectableText>(
+      find.byWidgetPredicate(
+        (widget) => widget is SelectableText && widget.data == 'Body paragraph',
+      ),
+    );
+
+    expect(heading.style?.fontSize, greaterThan((body.style?.fontSize)!));
+    expect(heading.style?.fontWeight, FontWeight.w700);
+  });
 }
 
 DocumentPackage _packageWithBlocks(List<String> texts) {

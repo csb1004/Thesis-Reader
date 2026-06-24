@@ -4,6 +4,7 @@ import 'package:thesis_reader/shared/storage/app_database.dart';
 
 abstract interface class ReaderSettingsRepository {
   Future<ReaderSettings> load(String documentId);
+  Future<void> saveDefaults(ReaderSettings settings);
   Future<void> save({
     required String documentId,
     required ReaderSettings settings,
@@ -13,18 +14,40 @@ abstract interface class ReaderSettingsRepository {
 final class DriftReaderSettingsRepository implements ReaderSettingsRepository {
   const DriftReaderSettingsRepository(this._database);
 
+  static const defaultDocumentId = '__reader_defaults__';
+
   final AppDatabase _database;
 
   @override
   Future<ReaderSettings> load(String documentId) async {
-    final row =
-        await (_database.select(_database.viewerSettings)
-              ..where((settings) => settings.documentId.equals(documentId)))
-            .getSingleOrNull();
+    final row = await _loadRow(documentId) ?? await _loadRow(defaultDocumentId);
     if (row == null) {
       return const ReaderSettings();
     }
 
+    return _settingsFromRow(row);
+  }
+
+  @override
+  Future<void> saveDefaults(ReaderSettings settings) {
+    return _save(defaultDocumentId, settings);
+  }
+
+  @override
+  Future<void> save({
+    required String documentId,
+    required ReaderSettings settings,
+  }) {
+    return _save(documentId, settings);
+  }
+
+  Future<ViewerSetting?> _loadRow(String documentId) {
+    return (_database.select(_database.viewerSettings)
+          ..where((settings) => settings.documentId.equals(documentId)))
+        .getSingleOrNull();
+  }
+
+  ReaderSettings _settingsFromRow(ViewerSetting row) {
     return ReaderSettings(
       themeId: row.themeId,
       fontFamily: row.fontFamily,
@@ -40,11 +63,7 @@ final class DriftReaderSettingsRepository implements ReaderSettingsRepository {
     );
   }
 
-  @override
-  Future<void> save({
-    required String documentId,
-    required ReaderSettings settings,
-  }) {
+  Future<void> _save(String documentId, ReaderSettings settings) {
     return _database
         .into(_database.viewerSettings)
         .insertOnConflictUpdate(

@@ -81,6 +81,8 @@ final class _ReaderScreenState extends State<ReaderScreen> {
   var _isNativeVolumeKeyNavigationEnabled = false;
   var _pageCount = 0;
   var _currentPageIndex = 0;
+  var _isChromeVisible = false;
+  Offset? _chromePointerStart;
   ReaderLayoutResult? _currentLayout;
   DocumentPackage? _currentPackage;
   var _didRestoreScroll = false;
@@ -124,7 +126,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     final package = widget.package;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: package == null || _isChromeVisible ? AppBar(
         title: Text(widget.displayTitle ?? package?.metadata.title ?? '리더'),
         actions: [
           if (package != null)
@@ -146,10 +148,26 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               onPressed: _showSettings,
             ),
         ],
-      ),
+      ) : null,
       body: package == null
           ? _OriginalPdfFallback(path: widget.originalPdfPath)
-          : _buildReader(package),
+          : Stack(
+              children: [
+                Listener(
+                  key: const Key('reader-menu-toggle-zone'),
+                  onPointerDown: _handleChromePointerDown,
+                  onPointerUp: _handleChromePointerUp,
+                  child: _buildReader(package),
+                ),
+                if (_isChromeVisible &&
+                    _settings.readingMode == ReadingMode.page)
+                  _ReaderPageSlider(
+                    pageIndex: _currentPageIndex,
+                    pageCount: _pageCount,
+                    onChanged: _jumpToPage,
+                  ),
+              ],
+            ),
     );
   }
 
@@ -184,16 +202,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
-              onPageChanged: (pageIndex) {
-                _currentPageIndex = pageIndex;
-                widget.onProgressChanged?.call(
-                  ReaderProgress(
-                    documentId: widget.documentId,
-                    pageIndex: pageIndex,
-                    pageCount: layout.pages.length,
-                  ),
-                );
-              },
+              onPageChanged: _handlePageChanged,
             ),
             ReadingMode.scroll => _ScrollModeReader(
               package: package,
@@ -210,6 +219,42 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         );
       },
     );
+  }
+
+  void _handleChromePointerDown(PointerDownEvent event) {
+    _chromePointerStart = event.position;
+  }
+
+  void _handleChromePointerUp(PointerUpEvent event) {
+    final start = _chromePointerStart;
+    _chromePointerStart = null;
+    if (start == null || (event.position - start).distance > 12) {
+      return;
+    }
+    setState(() => _isChromeVisible = !_isChromeVisible);
+  }
+
+  void _handlePageChanged(int pageIndex) {
+    setState(() => _currentPageIndex = pageIndex);
+    widget.onProgressChanged?.call(
+      ReaderProgress(
+        documentId: widget.documentId,
+        pageIndex: pageIndex,
+        pageCount: _pageCount,
+      ),
+    );
+  }
+
+  void _jumpToPage(double value) {
+    if (!_pageController.hasClients || _pageCount <= 0) {
+      return;
+    }
+    final pageIndex = value.round().clamp(0, _pageCount - 1);
+    if (pageIndex == _currentPageIndex) {
+      return;
+    }
+    _pageController.jumpToPage(pageIndex);
+    _handlePageChanged(pageIndex);
   }
 
   void _handleScrollEnd(ScrollMetrics metrics) {
@@ -736,23 +781,54 @@ final class _PageModeReader extends StatelessWidget {
                     ),
                   ),
                 ),
-                SizedBox(
-                  height: footerHeight,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      '${page.pageNumber} / ${layout.pages.length}',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: readerTheme.textColor.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                ),
+                SizedBox(height: footerHeight),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+final class _ReaderPageSlider extends StatelessWidget {
+  const _ReaderPageSlider({
+    required this.pageIndex,
+    required this.pageCount,
+    required this.onChanged,
+  });
+
+  final int pageIndex;
+  final int pageCount;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxPage = (pageCount - 1).clamp(0, pageCount);
+
+    return Positioned(
+      left: 24,
+      right: 24,
+      bottom: 18,
+      child: SafeArea(
+        top: false,
+        child: Material(
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(8),
+          elevation: 8,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Slider(
+              key: const Key('reader-page-slider'),
+              value: pageIndex.clamp(0, maxPage).toDouble(),
+              min: 0,
+              max: maxPage.toDouble(),
+              divisions: maxPage == 0 ? null : maxPage,
+              onChanged: pageCount <= 1 ? null : onChanged,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -847,13 +923,20 @@ final class _ReaderBlock extends StatelessWidget {
     );
 
     if (block.text case final text?) {
+      final isHeading = _looksLikeHeading(text);
       return Padding(
-        padding: const EdgeInsets.only(bottom: 16),
+        padding: EdgeInsets.only(bottom: isHeading ? 12 : 16),
         child: _ReferenceSelectableText(
           text: text,
           referenceSpans: block.referenceSpans,
           assetsById: assetsById,
-          style: textStyle,
+          style: isHeading
+              ? textStyle.copyWith(
+                  fontSize: (textStyle.fontSize ?? 16) * 1.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
+                )
+              : textStyle,
           onAssetPressed: onAssetPressed,
           onSimpleTranslateSelection: onSimpleTranslateSelection,
           onTranslateSelection: onTranslateSelection,
@@ -876,6 +959,25 @@ final class _ReaderBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _looksLikeHeading(String text) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty || trimmed.length > 80) {
+    return false;
+  }
+  if (RegExp(r'^\d+(\.\d+)*$').hasMatch(trimmed)) {
+    return true;
+  }
+  if (trimmed.contains(RegExp(r'[.!?]'))) {
+    return false;
+  }
+  final words = trimmed.split(RegExp(r'\s+'));
+  if (words.length == 1) {
+    return trimmed[0] == trimmed[0].toUpperCase();
+  }
+  return words.length <= 8 &&
+      words.every((word) => word.isEmpty || word[0] == word[0].toUpperCase());
 }
 
 final class _ReferenceSelectableText extends StatefulWidget {

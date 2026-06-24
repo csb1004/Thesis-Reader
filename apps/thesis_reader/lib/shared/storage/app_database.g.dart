@@ -1865,9 +1865,6 @@ class $ViewerSettingsTable extends ViewerSettings
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES documents (id)',
-    ),
   );
   static const VerificationMeta _readingModeMeta = const VerificationMeta(
     'readingMode',

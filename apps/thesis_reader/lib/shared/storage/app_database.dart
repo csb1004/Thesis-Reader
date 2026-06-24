@@ -57,7 +57,7 @@ class VocabularyEntries extends Table {
 }
 
 class ViewerSettings extends Table {
-  TextColumn get documentId => text().references(Documents, #id)();
+  TextColumn get documentId => text()();
   TextColumn get readingMode => text()();
   TextColumn get themeId => text()();
   TextColumn get fontFamily => text().nullable()();
@@ -79,7 +79,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'thesis_reader'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -90,6 +90,51 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await m.addColumn(viewerSettings, viewerSettings.bottomMarginScale);
+      }
+      if (from < 4) {
+        await customStatement('PRAGMA foreign_keys = OFF');
+        await customStatement('''
+CREATE TABLE IF NOT EXISTS viewer_settings_new (
+  document_id TEXT NOT NULL PRIMARY KEY,
+  reading_mode TEXT NOT NULL,
+  theme_id TEXT NOT NULL,
+  font_family TEXT NULL,
+  font_scale REAL NOT NULL,
+  line_height REAL NOT NULL,
+  margin_scale REAL NOT NULL,
+  bottom_margin_scale REAL NOT NULL DEFAULT 1.0,
+  asset_open_mode TEXT NOT NULL
+)
+''');
+        await customStatement('''
+INSERT OR REPLACE INTO viewer_settings_new (
+  document_id,
+  reading_mode,
+  theme_id,
+  font_family,
+  font_scale,
+  line_height,
+  margin_scale,
+  bottom_margin_scale,
+  asset_open_mode
+)
+SELECT
+  document_id,
+  reading_mode,
+  theme_id,
+  font_family,
+  font_scale,
+  line_height,
+  margin_scale,
+  bottom_margin_scale,
+  asset_open_mode
+FROM viewer_settings
+''');
+        await customStatement('DROP TABLE viewer_settings');
+        await customStatement(
+          'ALTER TABLE viewer_settings_new RENAME TO viewer_settings',
+        );
+        await customStatement('PRAGMA foreign_keys = ON');
       }
     },
     beforeOpen: (details) async {

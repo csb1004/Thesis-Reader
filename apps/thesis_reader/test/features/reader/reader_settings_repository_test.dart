@@ -53,6 +53,44 @@ void main() {
     expect(loaded.readingMode, expected.readingMode);
     expect(loaded.assetOpenMode, expected.assetOpenMode);
   });
+
+  test('uses shared defaults when a document has no saved settings', () async {
+    const defaults = ReaderSettings(
+      themeId: 'dark',
+      fontFamily: 'serif',
+      fontScale: 1.25,
+      lineHeight: 1.7,
+      marginScale: 1.1,
+      bottomMarginScale: 1.4,
+      readingMode: ReadingMode.scroll,
+      assetOpenMode: AssetOpenMode.fullScreen,
+    );
+
+    await repository.saveDefaults(defaults);
+
+    final loaded = await repository.load('doc-1');
+
+    expect(loaded.themeId, defaults.themeId);
+    expect(loaded.fontFamily, defaults.fontFamily);
+    expect(loaded.fontScale, defaults.fontScale);
+    expect(loaded.lineHeight, defaults.lineHeight);
+    expect(loaded.marginScale, defaults.marginScale);
+    expect(loaded.bottomMarginScale, defaults.bottomMarginScale);
+    expect(loaded.readingMode, defaults.readingMode);
+    expect(loaded.assetOpenMode, defaults.assetOpenMode);
+  });
+
+  test('document settings override shared defaults', () async {
+    await repository.saveDefaults(const ReaderSettings(themeId: 'dark'));
+    await repository.save(
+      documentId: 'doc-1',
+      settings: const ReaderSettings(themeId: 'white'),
+    );
+
+    final loaded = await repository.load('doc-1');
+
+    expect(loaded.themeId, 'white');
+  });
 }
 
 DocumentsCompanion _document({required String id}) {
