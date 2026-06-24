@@ -35,7 +35,7 @@ abstract final class DocumentPackageLoader {
           jsonDecode(await candidate.readAsString()) as Map<String, Object?>;
       return LoadedDocumentPackage(
         package: _withPackageAssetPaths(
-          DocumentPackage.fromJson(payload),
+          _normalizePackageText(DocumentPackage.fromJson(payload)),
           candidate.parent,
         ),
         packageFile: candidate,
@@ -70,6 +70,40 @@ abstract final class DocumentPackageLoader {
       anchors: package.anchors,
       vocabulary: package.vocabulary,
       summaries: package.summaries,
+    );
+  }
+
+  static DocumentPackage _normalizePackageText(DocumentPackage package) {
+    return DocumentPackage(
+      packageVersion: package.packageVersion,
+      documentId: package.documentId,
+      metadata: package.metadata,
+      sections: package.sections,
+      blocks: [
+        for (final block in package.blocks)
+          DocumentBlock(
+            id: block.id,
+            sectionId: block.sectionId,
+            kind: block.kind,
+            text: block.text == null
+                ? null
+                : _joinHyphenatedLineBreaks(block.text!),
+            assetId: block.assetId,
+            referenceSpans: block.referenceSpans,
+            anchor: block.anchor,
+          ),
+      ],
+      assets: package.assets,
+      anchors: package.anchors,
+      vocabulary: package.vocabulary,
+      summaries: package.summaries,
+    );
+  }
+
+  static String _joinHyphenatedLineBreaks(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'([A-Za-z])-\s*\r?\n\s*([A-Za-z])'),
+      (match) => '${match.group(1)}${match.group(2)}',
     );
   }
 }

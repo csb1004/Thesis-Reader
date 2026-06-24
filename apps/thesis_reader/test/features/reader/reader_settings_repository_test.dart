@@ -35,6 +35,7 @@ void main() {
       fontScale: 1.35,
       lineHeight: 1.8,
       marginScale: 1.2,
+      bottomMarginScale: 1.6,
       readingMode: ReadingMode.scroll,
       assetOpenMode: AssetOpenMode.fullScreen,
     );
@@ -48,6 +49,7 @@ void main() {
     expect(loaded.fontScale, expected.fontScale);
     expect(loaded.lineHeight, expected.lineHeight);
     expect(loaded.marginScale, expected.marginScale);
+    expect(loaded.bottomMarginScale, expected.bottomMarginScale);
     expect(loaded.readingMode, expected.readingMode);
     expect(loaded.assetOpenMode, expected.assetOpenMode);
   });

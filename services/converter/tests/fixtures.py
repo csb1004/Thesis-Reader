@@ -27,3 +27,14 @@ def write_wrapped_paragraph_pdf(path: Path) -> Path:
     c.drawString(72, 648, "A new paragraph starts after a visual gap.")
     c.save()
     return path
+
+
+def write_hyphenated_line_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Hyphen Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(72, 720, "Attention mechanisms are used in compelling sequence modeling and transduc-")
+    c.drawString(72, 704, "tion models in various tasks.")
+    c.save()
+    return path

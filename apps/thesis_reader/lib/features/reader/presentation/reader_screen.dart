@@ -698,7 +698,7 @@ final class _PageModeReader extends StatelessWidget {
   Widget build(BuildContext context) {
     final blocksById = {for (final block in package.blocks) block.id: block};
     final assetsById = {for (final asset in package.assets) asset.id: asset};
-    const footerHeight = 28.0;
+    final footerHeight = 56.0 * settings.bottomMarginScale;
 
     return PageView.builder(
       controller: controller,
@@ -706,8 +706,9 @@ final class _PageModeReader extends StatelessWidget {
       itemCount: layout.pages.length,
       itemBuilder: (context, index) {
         final page = layout.pages[index];
+        final margin = 24 * settings.marginScale;
         return Padding(
-          padding: EdgeInsets.all(24 * settings.marginScale),
+          padding: EdgeInsets.fromLTRB(margin, margin, margin, margin),
           child: ClipRect(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -65,6 +65,17 @@ final class ViewerSettingsSheet extends StatelessWidget {
               onChanged: (value) =>
                   onChanged?.call(settings.copyWith(marginScale: value)),
             ),
+            _SettingSlider(
+              label: '하단 여백',
+              icon: Icons.vertical_align_bottom,
+              value: settings.bottomMarginScale,
+              min: 0.5,
+              max: 2.5,
+              divisions: 20,
+              onChanged: (value) => onChanged?.call(
+                settings.copyWith(bottomMarginScale: value),
+              ),
+            ),
             const SizedBox(height: 8),
             _AssetOpenModeControl(settings: settings, onChanged: onChanged),
           ],

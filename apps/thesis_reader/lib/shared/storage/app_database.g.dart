@@ -1935,6 +1935,18 @@ class $ViewerSettingsTable extends ViewerSettings
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _bottomMarginScaleMeta =
+      const VerificationMeta('bottomMarginScale');
+  @override
+  late final GeneratedColumn<double> bottomMarginScale =
+      GeneratedColumn<double>(
+        'bottom_margin_scale',
+        aliasedName,
+        false,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(1.0),
+      );
   static const VerificationMeta _assetOpenModeMeta = const VerificationMeta(
     'assetOpenMode',
   );
@@ -1955,6 +1967,7 @@ class $ViewerSettingsTable extends ViewerSettings
     fontScale,
     lineHeight,
     marginScale,
+    bottomMarginScale,
     assetOpenMode,
   ];
   @override
@@ -2029,6 +2042,15 @@ class $ViewerSettingsTable extends ViewerSettings
     } else if (isInserting) {
       context.missing(_marginScaleMeta);
     }
+    if (data.containsKey('bottom_margin_scale')) {
+      context.handle(
+        _bottomMarginScaleMeta,
+        bottomMarginScale.isAcceptableOrUnknown(
+          data['bottom_margin_scale']!,
+          _bottomMarginScaleMeta,
+        ),
+      );
+    }
     if (data.containsKey('asset_open_mode')) {
       context.handle(
         _assetOpenModeMeta,
@@ -2077,6 +2099,10 @@ class $ViewerSettingsTable extends ViewerSettings
         DriftSqlType.double,
         data['${effectivePrefix}margin_scale'],
       )!,
+      bottomMarginScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}bottom_margin_scale'],
+      )!,
       assetOpenMode: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}asset_open_mode'],
@@ -2098,6 +2124,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
   final double fontScale;
   final double lineHeight;
   final double marginScale;
+  final double bottomMarginScale;
   final String assetOpenMode;
   const ViewerSetting({
     required this.documentId,
@@ -2107,6 +2134,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
     required this.fontScale,
     required this.lineHeight,
     required this.marginScale,
+    required this.bottomMarginScale,
     required this.assetOpenMode,
   });
   @override
@@ -2121,6 +2149,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
     map['font_scale'] = Variable<double>(fontScale);
     map['line_height'] = Variable<double>(lineHeight);
     map['margin_scale'] = Variable<double>(marginScale);
+    map['bottom_margin_scale'] = Variable<double>(bottomMarginScale);
     map['asset_open_mode'] = Variable<String>(assetOpenMode);
     return map;
   }
@@ -2136,6 +2165,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
       fontScale: Value(fontScale),
       lineHeight: Value(lineHeight),
       marginScale: Value(marginScale),
+      bottomMarginScale: Value(bottomMarginScale),
       assetOpenMode: Value(assetOpenMode),
     );
   }
@@ -2153,6 +2183,9 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
       fontScale: serializer.fromJson<double>(json['fontScale']),
       lineHeight: serializer.fromJson<double>(json['lineHeight']),
       marginScale: serializer.fromJson<double>(json['marginScale']),
+      bottomMarginScale: serializer.fromJson<double>(
+        json['bottomMarginScale'],
+      ),
       assetOpenMode: serializer.fromJson<String>(json['assetOpenMode']),
     );
   }
@@ -2167,6 +2200,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
       'fontScale': serializer.toJson<double>(fontScale),
       'lineHeight': serializer.toJson<double>(lineHeight),
       'marginScale': serializer.toJson<double>(marginScale),
+      'bottomMarginScale': serializer.toJson<double>(bottomMarginScale),
       'assetOpenMode': serializer.toJson<String>(assetOpenMode),
     };
   }
@@ -2179,6 +2213,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
     double? fontScale,
     double? lineHeight,
     double? marginScale,
+    double? bottomMarginScale,
     String? assetOpenMode,
   }) => ViewerSetting(
     documentId: documentId ?? this.documentId,
@@ -2188,6 +2223,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
     fontScale: fontScale ?? this.fontScale,
     lineHeight: lineHeight ?? this.lineHeight,
     marginScale: marginScale ?? this.marginScale,
+    bottomMarginScale: bottomMarginScale ?? this.bottomMarginScale,
     assetOpenMode: assetOpenMode ?? this.assetOpenMode,
   );
   ViewerSetting copyWithCompanion(ViewerSettingsCompanion data) {
@@ -2209,6 +2245,9 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
       marginScale: data.marginScale.present
           ? data.marginScale.value
           : this.marginScale,
+      bottomMarginScale: data.bottomMarginScale.present
+          ? data.bottomMarginScale.value
+          : this.bottomMarginScale,
       assetOpenMode: data.assetOpenMode.present
           ? data.assetOpenMode.value
           : this.assetOpenMode,
@@ -2225,6 +2264,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
           ..write('fontScale: $fontScale, ')
           ..write('lineHeight: $lineHeight, ')
           ..write('marginScale: $marginScale, ')
+          ..write('bottomMarginScale: $bottomMarginScale, ')
           ..write('assetOpenMode: $assetOpenMode')
           ..write(')'))
         .toString();
@@ -2239,6 +2279,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
     fontScale,
     lineHeight,
     marginScale,
+    bottomMarginScale,
     assetOpenMode,
   );
   @override
@@ -2252,6 +2293,7 @@ class ViewerSetting extends DataClass implements Insertable<ViewerSetting> {
           other.fontScale == this.fontScale &&
           other.lineHeight == this.lineHeight &&
           other.marginScale == this.marginScale &&
+          other.bottomMarginScale == this.bottomMarginScale &&
           other.assetOpenMode == this.assetOpenMode);
 }
 
@@ -2263,6 +2305,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
   final Value<double> fontScale;
   final Value<double> lineHeight;
   final Value<double> marginScale;
+  final Value<double> bottomMarginScale;
   final Value<String> assetOpenMode;
   final Value<int> rowid;
   const ViewerSettingsCompanion({
@@ -2273,6 +2316,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
     this.fontScale = const Value.absent(),
     this.lineHeight = const Value.absent(),
     this.marginScale = const Value.absent(),
+    this.bottomMarginScale = const Value.absent(),
     this.assetOpenMode = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -2284,6 +2328,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
     required double fontScale,
     required double lineHeight,
     required double marginScale,
+    this.bottomMarginScale = const Value.absent(),
     required String assetOpenMode,
     this.rowid = const Value.absent(),
   }) : documentId = Value(documentId),
@@ -2301,6 +2346,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
     Expression<double>? fontScale,
     Expression<double>? lineHeight,
     Expression<double>? marginScale,
+    Expression<double>? bottomMarginScale,
     Expression<String>? assetOpenMode,
     Expression<int>? rowid,
   }) {
@@ -2312,6 +2358,8 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
       if (fontScale != null) 'font_scale': fontScale,
       if (lineHeight != null) 'line_height': lineHeight,
       if (marginScale != null) 'margin_scale': marginScale,
+      if (bottomMarginScale != null)
+        'bottom_margin_scale': bottomMarginScale,
       if (assetOpenMode != null) 'asset_open_mode': assetOpenMode,
       if (rowid != null) 'rowid': rowid,
     });
@@ -2325,6 +2373,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
     Value<double>? fontScale,
     Value<double>? lineHeight,
     Value<double>? marginScale,
+    Value<double>? bottomMarginScale,
     Value<String>? assetOpenMode,
     Value<int>? rowid,
   }) {
@@ -2336,6 +2385,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
       fontScale: fontScale ?? this.fontScale,
       lineHeight: lineHeight ?? this.lineHeight,
       marginScale: marginScale ?? this.marginScale,
+      bottomMarginScale: bottomMarginScale ?? this.bottomMarginScale,
       assetOpenMode: assetOpenMode ?? this.assetOpenMode,
       rowid: rowid ?? this.rowid,
     );
@@ -2365,6 +2415,9 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
     if (marginScale.present) {
       map['margin_scale'] = Variable<double>(marginScale.value);
     }
+    if (bottomMarginScale.present) {
+      map['bottom_margin_scale'] = Variable<double>(bottomMarginScale.value);
+    }
     if (assetOpenMode.present) {
       map['asset_open_mode'] = Variable<String>(assetOpenMode.value);
     }
@@ -2384,6 +2437,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
           ..write('fontScale: $fontScale, ')
           ..write('lineHeight: $lineHeight, ')
           ..write('marginScale: $marginScale, ')
+          ..write('bottomMarginScale: $bottomMarginScale, ')
           ..write('assetOpenMode: $assetOpenMode, ')
           ..write('rowid: $rowid')
           ..write(')'))

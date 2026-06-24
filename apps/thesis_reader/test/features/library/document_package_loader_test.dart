@@ -85,4 +85,51 @@ void main() {
       expect(loaded?.packageFile.path, packageFile.path);
     },
   );
+
+  test('normalizes cached hyphenated line breaks in paragraph text', () async {
+    final temp = await Directory.systemTemp.createTemp('package_loader_test');
+    final packageFile = File(
+      p.join(temp.path, 'packages', 'doc-1', 'package.json'),
+    );
+    await packageFile.parent.create(recursive: true);
+    await packageFile.writeAsString(
+      jsonEncode({
+        'packageVersion': 1,
+        'documentId': 'doc-1',
+        'metadata': {
+          'title': 'Cached title',
+          'sourceFilename': 'paper.pdf',
+          'originalPdfSha256': 'abc123',
+          'converterVersion': 'mvp-1',
+        },
+        'sections': [
+          {
+            'id': 'sec-1',
+            'title': 'Document',
+            'blockIds': ['block-1'],
+          },
+        ],
+        'blocks': [
+          {
+            'id': 'block-1',
+            'sectionId': 'sec-1',
+            'kind': 'paragraph',
+            'text': 'sequence modeling and transduc-\ntion models',
+          },
+        ],
+        'assets': [],
+      }),
+    );
+
+    final loaded = await DocumentPackageLoader.load(
+      documentId: 'doc-1',
+      appDirectory: temp,
+      storedPackagePath: null,
+    );
+
+    expect(
+      loaded?.package.blocks.single.text,
+      'sequence modeling and transduction models',
+    );
+  });
 }

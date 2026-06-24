@@ -31,6 +31,7 @@ final class DriftReaderSettingsRepository implements ReaderSettingsRepository {
       fontScale: row.fontScale,
       lineHeight: row.lineHeight,
       marginScale: row.marginScale,
+      bottomMarginScale: row.bottomMarginScale,
       readingMode:
           _enumByName(ReadingMode.values, row.readingMode) ?? ReadingMode.page,
       assetOpenMode:
@@ -55,6 +56,7 @@ final class DriftReaderSettingsRepository implements ReaderSettingsRepository {
             fontScale: settings.fontScale,
             lineHeight: settings.lineHeight,
             marginScale: settings.marginScale,
+            bottomMarginScale: Value(settings.bottomMarginScale),
             assetOpenMode: settings.assetOpenMode.name,
           ),
         );

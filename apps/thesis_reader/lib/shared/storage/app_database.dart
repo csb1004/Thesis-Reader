@@ -64,6 +64,7 @@ class ViewerSettings extends Table {
   RealColumn get fontScale => real()();
   RealColumn get lineHeight => real()();
   RealColumn get marginScale => real()();
+  RealColumn get bottomMarginScale => real().withDefault(const Constant(1.0))();
   TextColumn get assetOpenMode => text()();
 
   @override
@@ -78,7 +79,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'thesis_reader'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -86,6 +87,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await m.createTable(libraryFolders);
         await m.addColumn(documents, documents.folderId);
+      }
+      if (from < 3) {
+        await m.addColumn(viewerSettings, viewerSettings.bottomMarginScale);
       }
     },
     beforeOpen: (details) async {

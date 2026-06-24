@@ -19,7 +19,8 @@ void main() {
     expect(find.text('글자 크기'), findsOneWidget);
     expect(find.text('페이지'), findsOneWidget);
     expect(find.text('스크롤'), findsOneWidget);
-    expect(find.byType(Slider), findsNWidgets(3));
+    expect(find.text('하단 여백'), findsOneWidget);
+    expect(find.byType(Slider), findsNWidgets(4));
     expect(find.byType(SegmentedButton<ReadingMode>), findsOneWidget);
     expect(find.byType(SegmentedButton<AssetOpenMode>), findsOneWidget);
   });

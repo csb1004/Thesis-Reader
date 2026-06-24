@@ -100,7 +100,7 @@ final class _ReaderMetrics {
     final margin = 24 * settings.marginScale;
     final contentWidth = math.max(1, viewport.width - margin * 2);
     final effectiveLineHeight = math.max(1, fontSize * settings.lineHeight);
-    const footerReserve = 28.0;
+    final footerReserve = 56.0 * settings.bottomMarginScale;
     final contentHeight = math.max(
       fontSize,
       viewport.height - margin * 2 - footerReserve,

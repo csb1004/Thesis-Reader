@@ -70,7 +70,7 @@ void main() {
     expect(large.linesPerPage, lessThan(normal.linesPerPage));
   });
 
-  test('page mode keeps only a small footer reserve', () {
+  test('page mode reserves user configured bottom margin', () {
     const package = DocumentPackage(
       packageVersion: 1,
       documentId: 'doc-1',
@@ -92,12 +92,26 @@ void main() {
       assets: [],
     );
 
-    final layout = ReaderLayoutEngine.paginate(
+    final compact = ReaderLayoutEngine.paginate(
       package,
-      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+      const ReaderSettings(
+        fontScale: 1.0,
+        lineHeight: 1.5,
+        bottomMarginScale: 0.5,
+      ),
+      const ReaderViewport(width: 320, height: 640),
+    );
+    final spacious = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(
+        fontScale: 1.0,
+        lineHeight: 1.5,
+        bottomMarginScale: 2.0,
+      ),
       const ReaderViewport(width: 320, height: 640),
     );
 
-    expect(layout.linesPerPage, greaterThanOrEqualTo(23));
+    expect(compact.linesPerPage, greaterThan(spacious.linesPerPage));
+    expect(spacious.linesPerPage, lessThanOrEqualTo(21));
   });
 }

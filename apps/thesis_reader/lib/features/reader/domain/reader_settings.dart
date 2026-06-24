@@ -13,6 +13,7 @@ final class ReaderSettings {
     this.fontScale = 1.0,
     this.lineHeight = 1.5,
     this.marginScale = 1.0,
+    this.bottomMarginScale = 1.0,
     this.readingMode = ReadingMode.page,
     this.assetOpenMode = AssetOpenMode.bottomSheet,
   });
@@ -22,6 +23,7 @@ final class ReaderSettings {
   final double fontScale;
   final double lineHeight;
   final double marginScale;
+  final double bottomMarginScale;
   final ReadingMode readingMode;
   final AssetOpenMode assetOpenMode;
 
@@ -31,6 +33,7 @@ final class ReaderSettings {
     double? fontScale,
     double? lineHeight,
     double? marginScale,
+    double? bottomMarginScale,
     ReadingMode? readingMode,
     AssetOpenMode? assetOpenMode,
   }) {
@@ -42,6 +45,7 @@ final class ReaderSettings {
       fontScale: fontScale ?? this.fontScale,
       lineHeight: lineHeight ?? this.lineHeight,
       marginScale: marginScale ?? this.marginScale,
+      bottomMarginScale: bottomMarginScale ?? this.bottomMarginScale,
       readingMode: readingMode ?? this.readingMode,
       assetOpenMode: assetOpenMode ?? this.assetOpenMode,
     );
