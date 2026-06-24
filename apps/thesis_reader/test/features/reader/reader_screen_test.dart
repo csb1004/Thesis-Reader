@@ -85,6 +85,30 @@ void main() {
     expect(find.byKey(const Key('reader-page-slider')), findsNothing);
   });
 
+  testWidgets('showing reader chrome does not shift the reading surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          displayTitle: 'Attention Is All You Need',
+          package: _packageWithBlocks(['Selectable thesis text']),
+        ),
+      ),
+    );
+
+    final before = tester.getRect(find.byKey(const Key('reader-theme-background')));
+
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+
+    final after = tester.getRect(find.byKey(const Key('reader-theme-background')));
+
+    expect(after.top, before.top);
+    expect(after.height, before.height);
+  });
+
   testWidgets('bottom slider changes the current page when chrome is visible', (
     tester,
   ) async {

@@ -126,7 +126,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     final package = widget.package;
 
     return Scaffold(
-      appBar: package == null || _isChromeVisible ? AppBar(
+      appBar: package == null ? AppBar(
         title: Text(widget.displayTitle ?? package?.metadata.title ?? '리더'),
         actions: [
           if (package != null)
@@ -159,6 +159,13 @@ final class _ReaderScreenState extends State<ReaderScreen> {
                   onPointerUp: _handleChromePointerUp,
                   child: _buildReader(package),
                 ),
+                if (_isChromeVisible)
+                  _ReaderTopChrome(
+                    title: widget.displayTitle ?? package.metadata.title,
+                    onSummarize: _summarizeCurrentPage,
+                    onVocabulary: _openVocabulary,
+                    onSettings: _showSettings,
+                  ),
                 if (_isChromeVisible &&
                     _settings.readingMode == ReadingMode.page)
                   _ReaderPageSlider(
@@ -825,6 +832,71 @@ final class _ReaderPageSlider extends StatelessWidget {
               max: maxPage.toDouble(),
               divisions: maxPage == 0 ? null : maxPage,
               onChanged: pageCount <= 1 ? null : onChanged,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _ReaderTopChrome extends StatelessWidget {
+  const _ReaderTopChrome({
+    required this.title,
+    required this.onSummarize,
+    required this.onVocabulary,
+    required this.onSettings,
+  });
+
+  final String title;
+  final VoidCallback onSummarize;
+  final VoidCallback onVocabulary;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: 0,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+        elevation: 0,
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: kToolbarHeight,
+            child: NavigationToolbar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              middle: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: '현재 페이지 요약',
+                    icon: const Icon(Icons.summarize_outlined),
+                    onPressed: onSummarize,
+                  ),
+                  IconButton(
+                    tooltip: '단어장',
+                    icon: const Icon(Icons.menu_book_outlined),
+                    onPressed: onVocabulary,
+                  ),
+                  IconButton(
+                    tooltip: '보기 설정',
+                    icon: const Icon(Icons.tune),
+                    onPressed: onSettings,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

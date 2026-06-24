@@ -114,4 +114,57 @@ void main() {
     expect(compact.linesPerPage, greaterThan(spacious.linesPerPage));
     expect(spacious.linesPerPage, lessThanOrEqualTo(21));
   });
+
+  test('keeps section headings with following body instead of orphaning them', () {
+    final package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: const DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: const [
+        DocumentSection(
+          id: 's1',
+          title: 'Body',
+          blockIds: ['body', 'number', 'heading', 'next'],
+        ),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'body',
+          sectionId: 's1',
+          text: 'Almost fills the first page. ${'body text ' * 250}',
+        ),
+        const DocumentBlock.paragraph(id: 'number', sectionId: 's1', text: '2'),
+        const DocumentBlock.paragraph(
+          id: 'heading',
+          sectionId: 's1',
+          text: 'Background',
+        ),
+        DocumentBlock.paragraph(
+          id: 'next',
+          sectionId: 's1',
+          text: 'The next section body should travel with the heading. '
+              '${'background text ' * 220}',
+        ),
+      ],
+      assets: const [],
+    );
+
+    final layout = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.2, lineHeight: 1.5),
+      const ReaderViewport(width: 360, height: 640),
+    );
+
+    expect(
+      layout.pages.any(
+        (page) =>
+            page.blockIds.contains('heading') && page.blockIds.contains('next'),
+      ),
+      isTrue,
+    );
+  });
 }

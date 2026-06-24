@@ -48,6 +48,7 @@ final class ReaderLayoutEngine {
     final pages = <ReaderPage>[];
     var currentBlockIds = <String>[];
     var currentLineCount = 0;
+    var currentPageHasOnlyHeadings = true;
 
     void flushPage() {
       if (currentBlockIds.isEmpty) {
@@ -62,16 +63,20 @@ final class ReaderLayoutEngine {
       );
       currentBlockIds = <String>[];
       currentLineCount = 0;
+      currentPageHasOnlyHeadings = true;
     }
 
     for (final block in package.blocks) {
       final blockLines = metrics.estimateBlockLines(block);
+      final isHeading = _looksLikeHeading(block.text);
       if (currentBlockIds.isNotEmpty &&
-          currentLineCount + blockLines > metrics.linesPerPage) {
+          currentLineCount + blockLines > metrics.linesPerPage &&
+          !currentPageHasOnlyHeadings) {
         flushPage();
       }
       currentBlockIds.add(block.id);
       currentLineCount += blockLines;
+      currentPageHasOnlyHeadings = currentPageHasOnlyHeadings && isHeading;
     }
     flushPage();
 
@@ -84,6 +89,25 @@ final class ReaderLayoutEngine {
       linesPerPage: metrics.linesPerPage,
     );
   }
+}
+
+bool _looksLikeHeading(String? text) {
+  final trimmed = text?.trim();
+  if (trimmed == null || trimmed.isEmpty || trimmed.length > 80) {
+    return false;
+  }
+  if (RegExp(r'^\d+(\.\d+)*$').hasMatch(trimmed)) {
+    return true;
+  }
+  if (trimmed.contains(RegExp(r'[.!?]'))) {
+    return false;
+  }
+  final words = trimmed.split(RegExp(r'\s+'));
+  if (words.length == 1) {
+    return trimmed[0] == trimmed[0].toUpperCase();
+  }
+  return words.length <= 8 &&
+      words.every((word) => word.isEmpty || word[0] == word[0].toUpperCase());
 }
 
 final class _ReaderMetrics {
