@@ -49,6 +49,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
   final _pageController = PageController();
   final _scrollController = ScrollController();
   StreamSubscription<VolumeKeyEvent>? _volumeKeySubscription;
+  var _isNativeVolumeKeyNavigationEnabled = false;
   var _pageCount = 0;
 
   @override
@@ -56,6 +57,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     super.initState();
     _settings = widget.initialSettings;
     _subscribeToVolumeKeys();
+    _syncNativeVolumeKeyNavigation();
   }
 
   @override
@@ -65,10 +67,17 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       _volumeKeySubscription?.cancel();
       _subscribeToVolumeKeys();
     }
+    if (oldWidget.package != widget.package) {
+      _syncNativeVolumeKeyNavigation();
+    }
   }
 
   @override
   void dispose() {
+    if (_isNativeVolumeKeyNavigationEnabled) {
+      unawaited(VolumeKeyChannel.instance.setVolumeKeyNavigationEnabled(false));
+      _isNativeVolumeKeyNavigationEnabled = false;
+    }
     _volumeKeySubscription?.cancel();
     _scrollController.dispose();
     _pageController.dispose();
@@ -168,6 +177,21 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         );
   }
 
+  void _syncNativeVolumeKeyNavigation() {
+    final shouldEnable =
+        mounted &&
+        widget.package != null &&
+        _settings.readingMode == ReadingMode.page;
+    if (shouldEnable == _isNativeVolumeKeyNavigationEnabled) {
+      return;
+    }
+
+    _isNativeVolumeKeyNavigationEnabled = shouldEnable;
+    unawaited(
+      VolumeKeyChannel.instance.setVolumeKeyNavigationEnabled(shouldEnable),
+    );
+  }
+
   void _handleVolumeKeyEvent(VolumeKeyEvent event) {
     if (_settings.readingMode != ReadingMode.page ||
         !_pageController.hasClients ||
@@ -200,6 +224,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               settings: _settings,
               onChanged: (settings) {
                 setState(() => _settings = settings);
+                _syncNativeVolumeKeyNavigation();
                 setSheetState(() {});
               },
             );

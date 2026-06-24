@@ -19,6 +19,17 @@ final class VolumeKeyChannel {
 
   Stream<VolumeKeyEvent> get events => _events.stream;
 
+  Future<void> setVolumeKeyNavigationEnabled(bool isEnabled) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'setVolumeKeyNavigationEnabled',
+        isEnabled,
+      );
+    } on MissingPluginException {
+      // The native volume-key hook exists only where the platform implements it.
+    }
+  }
+
   Future<void> dispose() async {
     _methodChannel.setMethodCallHandler(null);
     await _events.close();

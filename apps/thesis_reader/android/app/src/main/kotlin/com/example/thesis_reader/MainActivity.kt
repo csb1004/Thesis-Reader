@@ -7,17 +7,28 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var volumeKeyChannel: MethodChannel? = null
+    private var isVolumeKeyNavigationEnabled = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         volumeKeyChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             VOLUME_KEY_CHANNEL,
-        )
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setVolumeKeyNavigationEnabled" -> {
+                        isVolumeKeyNavigationEnabled = call.arguments == true
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) {
+        if (isVolumeKeyNavigationEnabled && event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
                     volumeKeyChannel?.invokeMethod("volumeDown", null)

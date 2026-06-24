@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
@@ -152,6 +153,49 @@ void main() {
 
     expect(find.byType(CustomScrollView), findsOneWidget);
     expect(find.byType(PageView), findsNothing);
+  });
+
+  testWidgets('native volume navigation follows page-mode lifecycle', (
+    tester,
+  ) async {
+    const methodChannel = MethodChannel(VolumeKeyChannel.channelName);
+    final calls = <MethodCall>[];
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(methodChannel, null),
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (call) async {
+          calls.add(call);
+          return null;
+        });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['Page mode text']),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scroll'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Page'));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+
+    expect(calls, [
+      isMethodCall('setVolumeKeyNavigationEnabled', arguments: true),
+      isMethodCall('setVolumeKeyNavigationEnabled', arguments: false),
+      isMethodCall('setVolumeKeyNavigationEnabled', arguments: true),
+      isMethodCall('setVolumeKeyNavigationEnabled', arguments: false),
+    ]);
   });
 
   testWidgets('renders valid asset references as clickable styled spans', (
