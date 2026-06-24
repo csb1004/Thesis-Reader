@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:thesis_reader/features/ai/data/openai_client.dart';
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
+import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
+import 'package:thesis_reader/features/ai/domain/summary_service.dart';
 import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
@@ -38,8 +40,12 @@ final class ReaderScreen extends StatefulWidget {
     this.package,
     this.originalPdfPath,
     this.openAiKeyStore,
+    this.simpleTranslationClient,
     this.translationService,
+    this.summaryService,
     this.vocabularyRepository,
+    this.initialPageIndex,
+    this.initialScrollProgress,
     this.initialSettings = const ReaderSettings(),
     this.onProgressChanged,
     this.volumeKeyEvents,
@@ -49,8 +55,12 @@ final class ReaderScreen extends StatefulWidget {
   final DocumentPackage? package;
   final String? originalPdfPath;
   final OpenAiKeyStore? openAiKeyStore;
+  final SimpleTranslationClient? simpleTranslationClient;
   final TranslationService? translationService;
+  final SummaryService? summaryService;
   final VocabularyRepository? vocabularyRepository;
+  final int? initialPageIndex;
+  final double? initialScrollProgress;
   final ReaderSettings initialSettings;
   final ValueChanged<ReaderProgress>? onProgressChanged;
   final Stream<VolumeKeyEvent>? volumeKeyEvents;
@@ -61,16 +71,22 @@ final class ReaderScreen extends StatefulWidget {
 
 final class _ReaderScreenState extends State<ReaderScreen> {
   late ReaderSettings _settings;
-  final _pageController = PageController();
+  late final PageController _pageController;
   final _scrollController = ScrollController();
   StreamSubscription<VolumeKeyEvent>? _volumeKeySubscription;
   var _isNativeVolumeKeyNavigationEnabled = false;
   var _pageCount = 0;
+  var _currentPageIndex = 0;
+  ReaderLayoutResult? _currentLayout;
+  DocumentPackage? _currentPackage;
+  var _didRestoreScroll = false;
 
   @override
   void initState() {
     super.initState();
     _settings = widget.initialSettings;
+    _currentPageIndex = widget.initialPageIndex ?? 0;
+    _pageController = PageController(initialPage: _currentPageIndex);
     _subscribeToVolumeKeys();
     _syncNativeVolumeKeyNavigation();
   }
@@ -109,6 +125,12 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         actions: [
           if (package != null)
             IconButton(
+              tooltip: '현재 페이지 요약',
+              icon: const Icon(Icons.summarize_outlined),
+              onPressed: _summarizeCurrentPage,
+            ),
+          if (package != null)
+            IconButton(
               tooltip: '단어장',
               icon: const Icon(Icons.menu_book_outlined),
               onPressed: _openVocabulary,
@@ -139,6 +161,9 @@ final class _ReaderScreenState extends State<ReaderScreen> {
           ),
         );
         _pageCount = layout.pages.length;
+        _currentLayout = layout;
+        _currentPackage = package;
+        _restoreScrollPositionIfNeeded();
         final readerTheme = ReaderThemeCatalog.resolve(_settings.themeId);
 
         return ColoredBox(
@@ -152,9 +177,11 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               readerTheme: readerTheme,
               controller: _pageController,
               onAssetPressed: _openAsset,
+              onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
               onPageChanged: (pageIndex) {
+                _currentPageIndex = pageIndex;
                 widget.onProgressChanged?.call(
                   ReaderProgress(
                     documentId: widget.documentId,
@@ -170,6 +197,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               readerTheme: readerTheme,
               controller: _scrollController,
               onAssetPressed: _openAsset,
+              onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
               onScrollEnded: _handleScrollEnd,
@@ -239,6 +267,24 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     }
 
     _pageController.jumpToPage(targetPage);
+  }
+
+  void _restoreScrollPositionIfNeeded() {
+    if (_didRestoreScroll ||
+        _settings.readingMode != ReadingMode.scroll ||
+        widget.initialScrollProgress == null) {
+      return;
+    }
+
+    _didRestoreScroll = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+      final position = _scrollController.position;
+      final progress = widget.initialScrollProgress!.clamp(0.0, 1.0);
+      _scrollController.jumpTo(position.maxScrollExtent * progress);
+    });
   }
 
   void _showSettings() {
@@ -338,13 +384,58 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         if (!mounted) {
           return;
         }
-        await _showTranslationResult(action);
+        await _showTranslationResult(action, sourceSentence: sourceSentence);
       case AiFailure(kind: AiFailureKind.missingKey):
         await _showOpenAiTokenDialog();
       case AiFailure(message: final message):
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('번역 실패: $message')));
+    }
+  }
+
+  Future<void> _simpleTranslateSelection(
+    String selectedText,
+    String sourceSentence,
+  ) async {
+    final expression = selectedText.trim();
+    if (expression.isEmpty) {
+      return;
+    }
+
+    final client = widget.simpleTranslationClient;
+    if (client == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('간단 번역을 아직 사용할 수 없습니다.')));
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$expression 간단 번역 중...')));
+    try {
+      final translated = await client.translateToKorean(expression);
+      if (!mounted) {
+        return;
+      }
+      await _showTranslationResult(
+        TranslationAction(
+          type: TranslationActionType.selectionTranslation,
+          sourceText: expression,
+          koreanText: translated,
+          shouldAutoSave: false,
+          canAddToVocabulary: true,
+        ),
+        sourceSentence: sourceSentence,
+      );
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('간단 번역 실패: $error')));
     }
   }
 
@@ -396,7 +487,10 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  Future<void> _showTranslationResult(TranslationAction action) {
+  Future<void> _showTranslationResult(
+    TranslationAction action, {
+    String? sourceSentence,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -420,7 +514,12 @@ final class _ReaderScreenState extends State<ReaderScreen> {
                     alignment: Alignment.centerRight,
                     child: FilledButton.icon(
                       onPressed: () {
-                        unawaited(_saveVocabulary(action));
+                        unawaited(
+                          _saveVocabulary(
+                            action,
+                            sourceSentence: sourceSentence,
+                          ),
+                        );
                         Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -490,6 +589,79 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       const SnackBar(content: Text('OpenAI 토큰을 저장했습니다. 다시 번역해 주세요.')),
     );
   }
+
+  Future<void> _summarizeCurrentPage() async {
+    final service = widget.summaryService;
+    if (service == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OpenAI 토큰 설정 후 요약할 수 있습니다.')),
+      );
+      return;
+    }
+
+    final package = _currentPackage;
+    final layout = _currentLayout;
+    if (package == null || layout == null || layout.pages.isEmpty) {
+      return;
+    }
+
+    final blocksById = {for (final block in package.blocks) block.id: block};
+    final page =
+        layout.pages[_currentPageIndex.clamp(0, layout.pages.length - 1)];
+    final pageText = page.blockIds
+        .map((id) => blocksById[id]?.text)
+        .whereType<String>()
+        .join('\n\n')
+        .trim();
+    if (pageText.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('요약할 본문이 없습니다.')));
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${page.pageNumber}페이지 요약 중...')));
+    final result = await service.summarizeRange(
+      paperText: pageText,
+      sectionTitle: package.metadata.title,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    switch (result) {
+      case AiSuccess(value: final summary):
+        await showModalBottomSheet<void>(
+          context: context,
+          showDragHandle: true,
+          builder: (context) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${page.pageNumber}페이지 요약',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  SelectableText(summary.summary),
+                ],
+              ),
+            ),
+          ),
+        );
+      case AiFailure(kind: AiFailureKind.missingKey):
+        await _showOpenAiTokenDialog();
+      case AiFailure(message: final message):
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('요약 실패: $message')));
+    }
+  }
 }
 
 final class _PageModeReader extends StatelessWidget {
@@ -500,6 +672,7 @@ final class _PageModeReader extends StatelessWidget {
     required this.readerTheme,
     required this.controller,
     required this.onAssetPressed,
+    required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
     required this.onPageChanged,
@@ -511,6 +684,7 @@ final class _PageModeReader extends StatelessWidget {
   final ReaderThemeData readerTheme;
   final PageController controller;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
   final ValueChanged<int> onPageChanged;
@@ -546,6 +720,8 @@ final class _PageModeReader extends StatelessWidget {
                               readerTheme: readerTheme,
                               assetsById: assetsById,
                               onAssetPressed: onAssetPressed,
+                              onSimpleTranslateSelection:
+                                  onSimpleTranslateSelection,
                               onTranslateSelection: onTranslateSelection,
                               onAddVocabulary: onAddVocabulary,
                             ),
@@ -578,6 +754,7 @@ final class _ScrollModeReader extends StatelessWidget {
     required this.readerTheme,
     required this.controller,
     required this.onAssetPressed,
+    required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
     required this.onScrollEnded,
@@ -588,6 +765,7 @@ final class _ScrollModeReader extends StatelessWidget {
   final ReaderThemeData readerTheme;
   final ScrollController controller;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
   final ValueChanged<ScrollMetrics> onScrollEnded;
@@ -615,6 +793,7 @@ final class _ScrollModeReader extends StatelessWidget {
                   readerTheme: readerTheme,
                   assetsById: assetsById,
                   onAssetPressed: onAssetPressed,
+                  onSimpleTranslateSelection: onSimpleTranslateSelection,
                   onTranslateSelection: onTranslateSelection,
                   onAddVocabulary: onAddVocabulary,
                 );
@@ -634,6 +813,7 @@ final class _ReaderBlock extends StatelessWidget {
     required this.readerTheme,
     required this.assetsById,
     required this.onAssetPressed,
+    required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
   });
@@ -643,6 +823,7 @@ final class _ReaderBlock extends StatelessWidget {
   final ReaderThemeData readerTheme;
   final Map<String, DocumentAsset> assetsById;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
 
@@ -664,6 +845,7 @@ final class _ReaderBlock extends StatelessWidget {
           assetsById: assetsById,
           style: textStyle,
           onAssetPressed: onAssetPressed,
+          onSimpleTranslateSelection: onSimpleTranslateSelection,
           onTranslateSelection: onTranslateSelection,
           onAddVocabulary: onAddVocabulary,
         ),
@@ -693,6 +875,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
     required this.assetsById,
     required this.style,
     required this.onAssetPressed,
+    required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
   });
@@ -702,6 +885,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
   final Map<String, DocumentAsset> assetsById;
   final TextStyle style;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
 
@@ -785,7 +969,18 @@ final class _ReferenceSelectableTextState
     final selectedText = value.selection.textInside(value.text).trim();
     final buttonItems = <ContextMenuButtonItem>[
       ContextMenuButtonItem(
-        label: '번역',
+        label: '간단 번역',
+        onPressed: selectedText.isEmpty
+            ? null
+            : () {
+                editableTextState.hideToolbar();
+                unawaited(
+                  widget.onSimpleTranslateSelection(selectedText, widget.text),
+                );
+              },
+      ),
+      ContextMenuButtonItem(
+        label: 'OpenAI 번역',
         onPressed: selectedText.isEmpty
             ? null
             : () {

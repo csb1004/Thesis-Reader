@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:document_contract/document_contract.dart';
@@ -8,8 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:thesis_reader/features/ai/data/openai_client.dart';
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
+import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
+import 'package:thesis_reader/features/ai/domain/summary_service.dart';
 import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/library/data/converter_client.dart';
 import 'package:thesis_reader/features/library/data/document_repository.dart';
@@ -65,16 +69,28 @@ class _LibraryHomeState extends State<_LibraryHome> {
   AppDatabase? _database;
   OpenAiKeyStore? _openAiKeyStore;
   OpenAiClient? _openAiClient;
+  SimpleTranslationClient? _simpleTranslationClient;
   TranslationService? _translationService;
+  SummaryService? _summaryService;
   VocabularyRepository? _vocabularyRepository;
+  SharedPreferences? _preferences;
   final List<LibraryDocumentViewModel> _documents = [];
   final Map<String, DocumentPackage> _packagesByDocumentId = {};
   final Map<String, String> _originalPdfPathsByDocumentId = {};
+  final Map<String, int> _pageIndexByDocumentId = {};
+  final Map<String, double> _scrollProgressByDocumentId = {};
   var _isImporting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadSavedDocuments());
+  }
 
   @override
   void dispose() {
     _openAiClient?.close();
+    _simpleTranslationClient?.close();
     _database?.close();
     super.dispose();
   }
@@ -86,11 +102,20 @@ class _LibraryHomeState extends State<_LibraryHome> {
   OpenAiClient get _appOpenAiClient =>
       _openAiClient ??= OpenAiClient(keyStore: _appOpenAiKeyStore);
 
+  SimpleTranslationClient get _appSimpleTranslationClient =>
+      _simpleTranslationClient ??= SimpleTranslationClient();
+
   TranslationService get _appTranslationService => _translationService ??=
       TranslationService(openAiClient: _appOpenAiClient);
 
+  SummaryService get _appSummaryService =>
+      _summaryService ??= SummaryService(openAiClient: _appOpenAiClient);
+
   VocabularyRepository get _appVocabularyRepository =>
       _vocabularyRepository ??= DriftVocabularyRepository(_appDatabase);
+
+  Future<SharedPreferences> get _appPreferences async =>
+      _preferences ??= await SharedPreferences.getInstance();
 
   @override
   Widget build(BuildContext context) {
@@ -170,8 +195,12 @@ class _LibraryHomeState extends State<_LibraryHome> {
           package: readablePackage,
           originalPdfPath: _originalPdfPathsByDocumentId[documentId],
           openAiKeyStore: _appOpenAiKeyStore,
+          simpleTranslationClient: _appSimpleTranslationClient,
           translationService: _appTranslationService,
+          summaryService: _appSummaryService,
           vocabularyRepository: _appVocabularyRepository,
+          initialPageIndex: _pageIndexByDocumentId[documentId],
+          initialScrollProgress: _scrollProgressByDocumentId[documentId],
           onProgressChanged: _handleReaderProgress,
         ),
       ),
@@ -207,6 +236,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
         DocumentPackage.fromJson(payload),
         packageFile.parent,
       );
+      await _markDocumentConverted(document.id, packageFile.path);
 
       if (!mounted) {
         return;
@@ -265,6 +295,15 @@ class _LibraryHomeState extends State<_LibraryHome> {
       return;
     }
 
+    if (progress.pageIndex != null) {
+      _pageIndexByDocumentId[progress.documentId] = progress.pageIndex!;
+    }
+    if (progress.scrollProgress != null) {
+      _scrollProgressByDocumentId[progress.documentId] =
+          progress.scrollProgress!;
+    }
+    unawaited(_saveReaderProgress(progress, value));
+
     setState(() {
       final document = _documents[index];
       _documents[index] = LibraryDocumentViewModel(
@@ -273,6 +312,100 @@ class _LibraryHomeState extends State<_LibraryHome> {
         conversionStatus: document.conversionStatus,
         lastReadProgress: value,
       );
+    });
+  }
+
+  Future<void> _saveReaderProgress(
+    ReaderProgress progress,
+    double readProgress,
+  ) async {
+    final preferences = await _appPreferences;
+    await preferences.setDouble(
+      _progressKey(progress.documentId),
+      readProgress,
+    );
+    if (progress.pageIndex != null) {
+      await preferences.setInt(
+        _pageIndexKey(progress.documentId),
+        progress.pageIndex!,
+      );
+    }
+    if (progress.scrollProgress != null) {
+      await preferences.setDouble(
+        _scrollProgressKey(progress.documentId),
+        progress.scrollProgress!,
+      );
+    }
+  }
+
+  Future<void> _loadSavedDocuments() async {
+    final preferences = await _appPreferences;
+    final appDirectory = await getApplicationDocumentsDirectory();
+    final rows = await _appDatabase.select(_appDatabase.documents).get();
+    if (!mounted || rows.isEmpty) {
+      return;
+    }
+
+    final documents = <LibraryDocumentViewModel>[];
+    final packagesByDocumentId = <String, DocumentPackage>{};
+    final originalPdfPathsByDocumentId = <String, String>{};
+    final pageIndexByDocumentId = <String, int>{};
+    final scrollProgressByDocumentId = <String, double>{};
+
+    for (final row in rows) {
+      final packageDirectory = Directory(
+        p.join(appDirectory.path, 'packages', row.id),
+      );
+      final packageFile = File(p.join(packageDirectory.path, 'package.json'));
+      if (await packageFile.exists()) {
+        final payload =
+            jsonDecode(await packageFile.readAsString())
+                as Map<String, Object?>;
+        packagesByDocumentId[row.id] = _withPackageAssetPaths(
+          DocumentPackage.fromJson(payload),
+          packageDirectory,
+        );
+      }
+
+      originalPdfPathsByDocumentId[row.id] = row.localPdfPath;
+      final progress = preferences.getDouble(_progressKey(row.id)) ?? 0;
+      final pageIndex = preferences.getInt(_pageIndexKey(row.id));
+      final scrollProgress = preferences.getDouble(_scrollProgressKey(row.id));
+      if (pageIndex != null) {
+        pageIndexByDocumentId[row.id] = pageIndex;
+      }
+      if (scrollProgress != null) {
+        scrollProgressByDocumentId[row.id] = scrollProgress;
+      }
+      documents.add(
+        LibraryDocumentViewModel(
+          id: row.id,
+          title: row.title,
+          conversionStatus: packageFile.existsSync() ? '변환 완료' : '원본 PDF 보기',
+          lastReadProgress: progress,
+        ),
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _documents
+        ..clear()
+        ..addAll(documents);
+      _packagesByDocumentId
+        ..clear()
+        ..addAll(packagesByDocumentId);
+      _originalPdfPathsByDocumentId
+        ..clear()
+        ..addAll(originalPdfPathsByDocumentId);
+      _pageIndexByDocumentId
+        ..clear()
+        ..addAll(pageIndexByDocumentId);
+      _scrollProgressByDocumentId
+        ..clear()
+        ..addAll(scrollProgressByDocumentId);
     });
   }
 
@@ -293,6 +426,18 @@ class _LibraryHomeState extends State<_LibraryHome> {
             lastReadOffset: const Value.absent(),
           ),
         );
+  }
+
+  Future<void> _markDocumentConverted(String documentId, String packagePath) {
+    return (_appDatabase.update(
+      _appDatabase.documents,
+    )..where((document) => document.id.equals(documentId))).write(
+      DocumentsCompanion(
+        packagePath: Value(packagePath),
+        status: const Value('converted'),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
   }
 
   DocumentPackage _buildImportedPdfPackage(DocumentRecord document) {
@@ -352,3 +497,10 @@ class _LibraryHomeState extends State<_LibraryHome> {
     );
   }
 }
+
+String _progressKey(String documentId) => 'reader_progress_$documentId';
+
+String _pageIndexKey(String documentId) => 'reader_page_index_$documentId';
+
+String _scrollProgressKey(String documentId) =>
+    'reader_scroll_progress_$documentId';
