@@ -1,0 +1,17 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "services/converter/Dockerfile",
+    "watchPatterns": [
+      "services/converter/**"
+    ]
+  },
+  "deploy": {
+    "startCommand": "uvicorn services.converter.app.main:app --host 0.0.0.0 --port ${PORT}",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}
