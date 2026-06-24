@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/material.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/viewer_settings_sheet.dart';
+import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
 
 final class ReaderProgress {
   const ReaderProgress({
@@ -28,12 +31,14 @@ final class ReaderScreen extends StatefulWidget {
     this.package,
     this.initialSettings = const ReaderSettings(),
     this.onProgressChanged,
+    this.volumeKeyEvents,
   });
 
   final String documentId;
   final DocumentPackage? package;
   final ReaderSettings initialSettings;
   final ValueChanged<ReaderProgress>? onProgressChanged;
+  final Stream<VolumeKeyEvent>? volumeKeyEvents;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -43,15 +48,28 @@ final class _ReaderScreenState extends State<ReaderScreen> {
   late ReaderSettings _settings;
   final _pageController = PageController();
   final _scrollController = ScrollController();
+  StreamSubscription<VolumeKeyEvent>? _volumeKeySubscription;
+  var _pageCount = 0;
 
   @override
   void initState() {
     super.initState();
     _settings = widget.initialSettings;
+    _subscribeToVolumeKeys();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.volumeKeyEvents != widget.volumeKeyEvents) {
+      _volumeKeySubscription?.cancel();
+      _subscribeToVolumeKeys();
+    }
   }
 
   @override
   void dispose() {
+    _volumeKeySubscription?.cancel();
     _scrollController.dispose();
     _pageController.dispose();
     super.dispose();
@@ -87,6 +105,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
             height: constraints.maxHeight,
           ),
         );
+        _pageCount = layout.pages.length;
         final readerTheme = ReaderThemeCatalog.resolve(_settings.themeId);
 
         return ColoredBox(
@@ -140,6 +159,34 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         scrollProgress: scrollProgress,
       ),
     );
+  }
+
+  void _subscribeToVolumeKeys() {
+    _volumeKeySubscription =
+        (widget.volumeKeyEvents ?? VolumeKeyChannel.instance.events).listen(
+          _handleVolumeKeyEvent,
+        );
+  }
+
+  void _handleVolumeKeyEvent(VolumeKeyEvent event) {
+    if (_settings.readingMode != ReadingMode.page ||
+        !_pageController.hasClients ||
+        _pageCount <= 0) {
+      return;
+    }
+
+    final currentPage = (_pageController.page ?? 0).round();
+    final pageDelta = switch (event) {
+      VolumeKeyEvent.next => 1,
+      VolumeKeyEvent.previous => -1,
+    };
+    final targetPage = (currentPage + pageDelta).clamp(0, _pageCount - 1);
+
+    if (targetPage == currentPage) {
+      return;
+    }
+
+    _pageController.jumpToPage(targetPage);
   }
 
   void _showSettings() {

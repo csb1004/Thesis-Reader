@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
+import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
 
 void main() {
   testWidgets('renders text blocks as selectable text with theme colors', (
@@ -72,6 +75,83 @@ void main() {
     expect(progressChanges.single.scrollOffset, greaterThan(0));
     expect(progressChanges.single.scrollProgress, greaterThan(0));
     expect(progressChanges.single.scrollProgress, lessThanOrEqualTo(1));
+  });
+
+  testWidgets('volume keys move between pages in page mode', (tester) async {
+    final volumeKeys = StreamController<VolumeKeyEvent>.broadcast();
+    final progressChanges = <ReaderProgress>[];
+    addTearDown(volumeKeys.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 320,
+          height: 240,
+          child: ReaderScreen(
+            documentId: 'doc-1',
+            package: _packageWithBlocks(
+              List.generate(
+                8,
+                (index) =>
+                    'Paragraph $index ${'fills the reader page. ' * 400}',
+              ),
+            ),
+            volumeKeyEvents: volumeKeys.stream,
+            onProgressChanged: progressChanges.add,
+          ),
+        ),
+      ),
+    );
+
+    expect(progressChanges, isEmpty);
+
+    volumeKeys.add(VolumeKeyEvent.next);
+    await tester.pumpAndSettle();
+
+    expect(progressChanges.last.pageIndex, 1);
+    expect(progressChanges.last.pageCount, 8);
+
+    volumeKeys.add(VolumeKeyEvent.previous);
+    await tester.pumpAndSettle();
+
+    expect(progressChanges.last.pageIndex, 0);
+
+    final progressCountAtFirstPage = progressChanges.length;
+
+    volumeKeys.add(VolumeKeyEvent.previous);
+    await tester.pumpAndSettle();
+
+    expect(progressChanges, hasLength(progressCountAtFirstPage));
+  });
+
+  testWidgets('volume keys are ignored in scroll mode', (tester) async {
+    final volumeKeys = StreamController<VolumeKeyEvent>.broadcast();
+    addTearDown(volumeKeys.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(
+            List.generate(
+              8,
+              (index) =>
+                  'Paragraph $index has enough text to remain scrollable.',
+            ),
+          ),
+          initialSettings: const ReaderSettings(
+            readingMode: ReadingMode.scroll,
+          ),
+          volumeKeyEvents: volumeKeys.stream,
+        ),
+      ),
+    );
+
+    volumeKeys.add(VolumeKeyEvent.next);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CustomScrollView), findsOneWidget);
+    expect(find.byType(PageView), findsNothing);
   });
 
   testWidgets('renders valid asset references as clickable styled spans', (
@@ -168,42 +248,43 @@ void main() {
     expect(selectable.textSpan, isNull);
   });
 
-  testWidgets('missing-target overlaps do not suppress later valid references', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ReaderScreen(
-          documentId: 'doc-1',
-          package: _package(
-            referenceSpans: const [
-              ReferenceSpan(
-                start: 19,
-                end: 31,
-                targetAssetId: 'missing',
-                kind: ReferenceKind.figure,
-              ),
-              ReferenceSpan(
-                start: 21,
-                end: 29,
-                targetAssetId: 'figure-1',
-                kind: ReferenceKind.figure,
-              ),
-            ],
+  testWidgets(
+    'missing-target overlaps do not suppress later valid references',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReaderScreen(
+            documentId: 'doc-1',
+            package: _package(
+              referenceSpans: const [
+                ReferenceSpan(
+                  start: 19,
+                  end: 31,
+                  targetAssetId: 'missing',
+                  kind: ReferenceKind.figure,
+                ),
+                ReferenceSpan(
+                  start: 21,
+                  end: 29,
+                  targetAssetId: 'figure-1',
+                  kind: ReferenceKind.figure,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    final selectable = tester.widget<SelectableText>(
-      find.byType(SelectableText),
-    );
-    final referenceSpan = selectable.textSpan!.children!
-        .whereType<TextSpan>()
-        .singleWhere((span) => span.text == 'Figure 1');
+      final selectable = tester.widget<SelectableText>(
+        find.byType(SelectableText),
+      );
+      final referenceSpan = selectable.textSpan!.children!
+          .whereType<TextSpan>()
+          .singleWhere((span) => span.text == 'Figure 1');
 
-    expect(referenceSpan.recognizer, isNotNull);
-  });
+      expect(referenceSpan.recognizer, isNotNull);
+    },
+  );
 }
 
 DocumentPackage _packageWithBlocks(List<String> texts) {

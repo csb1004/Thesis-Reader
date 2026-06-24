@@ -1,5 +1,39 @@
 package com.example.thesis_reader
 
+import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity()
+class MainActivity : FlutterActivity() {
+    private var volumeKeyChannel: MethodChannel? = null
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        volumeKeyChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            VOLUME_KEY_CHANNEL,
+        )
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    volumeKeyChannel?.invokeMethod("volumeDown", null)
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    volumeKeyChannel?.invokeMethod("volumeUp", null)
+                    return true
+                }
+            }
+        }
+
+        return super.dispatchKeyEvent(event)
+    }
+
+    companion object {
+        private const val VOLUME_KEY_CHANNEL = "thesis_reader/volume_keys"
+    }
+}
