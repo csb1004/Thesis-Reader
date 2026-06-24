@@ -16,7 +16,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('No vocabulary yet'), findsOneWidget);
+    expect(find.text('아직 단어장이 비어 있습니다'), findsOneWidget);
   });
 
   testWidgets('lists document vocabulary and edits user fields', (
@@ -56,20 +56,46 @@ void main() {
     expect(find.text('Read this in context.'), findsOneWidget);
     expect(find.text('Hidden'), findsNothing);
 
-    await tester.tap(find.byTooltip('Edit vocabulary note'));
+    await tester.tap(find.byTooltip('단어 수정'));
     await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '내 뜻'), '문맥상 의미');
     await tester.enterText(
-      find.widgetWithText(TextField, 'Your meaning'),
-      '내 뜻',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Memo'),
+      find.widgetWithText(TextField, '메모'),
       'review later',
     );
-    await tester.tap(find.text('Save'));
+    await tester.tap(find.text('저장'));
     await tester.pumpAndSettle();
 
-    expect(find.text('내 뜻'), findsOneWidget);
+    expect(find.text('문맥상 의미'), findsOneWidget);
     expect(find.text('review later'), findsOneWidget);
+  });
+
+  testWidgets('deletes vocabulary entries from the screen', (tester) async {
+    final repository = InMemoryVocabularyRepository();
+    await repository.upsert(
+      const VocabularyDraft(
+        documentId: 'doc-1',
+        expression: 'Attention',
+        meaningKo: '주의',
+        sourceSentence: 'Attention matters.',
+        contextBefore: null,
+        contextAfter: null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VocabularyScreen(documentId: 'doc-1', repository: repository),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('단어 삭제'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('삭제'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attention'), findsNothing);
+    expect(find.text('아직 단어장이 비어 있습니다'), findsOneWidget);
   });
 }

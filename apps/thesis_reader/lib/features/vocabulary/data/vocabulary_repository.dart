@@ -7,6 +7,7 @@ abstract interface class VocabularyRepository {
   Future<VocabularyEntryView> upsert(VocabularyDraft draft);
   Future<List<VocabularyEntryView>> listForDocument(String documentId);
   Future<int> countForDocument(String documentId);
+  Future<void> delete(String entryId);
 
   Future<VocabularyEntryView> updateUserMeaningAndMemo({
     required String entryId,
@@ -173,6 +174,13 @@ final class DriftVocabularyRepository implements VocabularyRepository {
   }
 
   @override
+  Future<void> delete(String entryId) {
+    return (_database.delete(
+      _database.vocabularyEntries,
+    )..where((entry) => entry.id.equals(entryId))).go();
+  }
+
+  @override
   Future<VocabularyEntryView> updateUserMeaningAndMemo({
     required String entryId,
     required String? userMeaning,
@@ -276,6 +284,11 @@ final class InMemoryVocabularyRepository implements VocabularyRepository {
     return _entries.values
         .where((entry) => entry.documentId == documentId)
         .length;
+  }
+
+  @override
+  Future<void> delete(String entryId) async {
+    _entries.remove(entryId);
   }
 
   @override

@@ -154,6 +154,25 @@ void main() {
       expect(updated.sourceSentence, 'Context matters.');
     },
   );
+
+  test('delete removes a vocabulary entry', () async {
+    await database.into(database.documents).insert(_document(id: 'doc-1'));
+    final entry = await repository.upsert(
+      const VocabularyDraft(
+        documentId: 'doc-1',
+        expression: 'Context',
+        meaningKo: '문맥',
+        sourceSentence: 'Context matters.',
+        contextBefore: null,
+        contextAfter: null,
+      ),
+    );
+
+    await repository.delete(entry.id);
+
+    expect(await repository.listForDocument('doc-1'), isEmpty);
+    expect(await repository.countForDocument('doc-1'), 0);
+  });
 }
 
 DocumentsCompanion _document({required String id}) {

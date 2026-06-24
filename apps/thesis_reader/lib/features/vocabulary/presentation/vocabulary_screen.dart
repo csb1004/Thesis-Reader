@@ -36,7 +36,7 @@ final class _VocabularyScreenState extends State<VocabularyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Vocabulary')),
+      appBar: AppBar(title: const Text('단어장')),
       body: FutureBuilder<List<VocabularyEntryView>>(
         future: _entriesFuture,
         builder: (context, snapshot) {
@@ -44,7 +44,7 @@ final class _VocabularyScreenState extends State<VocabularyScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Vocabulary could not be loaded'));
+            return const Center(child: Text('단어장을 불러올 수 없습니다'));
           }
 
           final entries = snapshot.data ?? const [];
@@ -59,6 +59,7 @@ final class _VocabularyScreenState extends State<VocabularyScreen> {
             itemBuilder: (context, index) => _VocabularyEntryTile(
               entry: entries[index],
               onEdit: () => _editEntry(entries[index]),
+              onDelete: () => _deleteEntry(entries[index]),
             ),
           );
         },
@@ -91,6 +92,37 @@ final class _VocabularyScreenState extends State<VocabularyScreen> {
       _entriesFuture = _loadEntries();
     });
   }
+
+  Future<void> _deleteEntry(VocabularyEntryView entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(entry.expression),
+        content: const Text('이 단어를 단어장에서 삭제할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    await widget.repository.delete(entry.id);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _entriesFuture = _loadEntries();
+    });
+  }
 }
 
 final class _VocabularyEmptyState extends StatelessWidget {
@@ -100,7 +132,7 @@ final class _VocabularyEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Text(
-        'No vocabulary yet',
+        '아직 단어장이 비어 있습니다',
         style: Theme.of(context).textTheme.titleMedium,
       ),
     );
@@ -108,10 +140,15 @@ final class _VocabularyEmptyState extends StatelessWidget {
 }
 
 final class _VocabularyEntryTile extends StatelessWidget {
-  const _VocabularyEntryTile({required this.entry, required this.onEdit});
+  const _VocabularyEntryTile({
+    required this.entry,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final VocabularyEntryView entry;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -140,10 +177,20 @@ final class _VocabularyEntryTile extends StatelessWidget {
           ],
         ),
       ),
-      trailing: IconButton(
-        tooltip: 'Edit vocabulary note',
-        icon: const Icon(Icons.edit_note),
-        onPressed: onEdit,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: '단어 수정',
+            icon: const Icon(Icons.edit_note),
+            onPressed: onEdit,
+          ),
+          IconButton(
+            tooltip: '단어 삭제',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: onDelete,
+          ),
+        ],
       ),
     );
   }
@@ -187,11 +234,11 @@ final class _VocabularyEditDialogState extends State<_VocabularyEditDialog> {
         children: [
           TextField(
             controller: _userMeaningController,
-            decoration: const InputDecoration(labelText: 'Your meaning'),
+            decoration: const InputDecoration(labelText: '내 뜻'),
           ),
           TextField(
             controller: _userMemoController,
-            decoration: const InputDecoration(labelText: 'Memo'),
+            decoration: const InputDecoration(labelText: '메모'),
             minLines: 2,
             maxLines: 4,
           ),
@@ -200,7 +247,7 @@ final class _VocabularyEditDialogState extends State<_VocabularyEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: const Text('취소'),
         ),
         FilledButton(
           onPressed: () {
@@ -211,7 +258,7 @@ final class _VocabularyEditDialogState extends State<_VocabularyEditDialog> {
               ),
             );
           },
-          child: const Text('Save'),
+          child: const Text('저장'),
         ),
       ],
     );
