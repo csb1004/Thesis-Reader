@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:document_contract/document_contract.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -51,6 +52,7 @@ class _LibraryHome extends StatefulWidget {
 
 class _LibraryHomeState extends State<_LibraryHome> {
   final List<LibraryDocumentViewModel> _documents = [];
+  final Map<String, DocumentPackage> _packagesByDocumentId = {};
   var _isImporting = false;
 
   @override
@@ -58,7 +60,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
     return LibraryScreen(
       documents: _documents,
       onImportPressed: _isImporting ? null : _importPdf,
-      onDocumentSelected: (documentId) => context.go('/reader/$documentId'),
+      onDocumentSelected: _openDocument,
     );
   }
 
@@ -81,11 +83,13 @@ class _LibraryHomeState extends State<_LibraryHome> {
         fileStore: DocumentFileStore(rootDirectory: appDirectory),
       );
       final document = await repository.importPdf(File(selectedPath));
+      final package = _buildImportedPdfPackage(document);
 
       if (!mounted) {
         return;
       }
       setState(() {
+        _packagesByDocumentId[document.id] = package;
         _documents.add(
           LibraryDocumentViewModel(
             id: document.id,
@@ -110,5 +114,46 @@ class _LibraryHomeState extends State<_LibraryHome> {
         setState(() => _isImporting = false);
       }
     }
+  }
+
+  void _openDocument(String documentId) {
+    final package = _packagesByDocumentId[documentId];
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => ReaderScreen(
+          documentId: documentId,
+          package: package,
+        ),
+      ),
+    );
+  }
+
+  DocumentPackage _buildImportedPdfPackage(DocumentRecord document) {
+    return DocumentPackage(
+      packageVersion: 1,
+      documentId: document.id,
+      metadata: DocumentMetadata(
+        title: document.sourceFilename,
+        sourceFilename: document.sourceFilename,
+        originalPdfSha256: document.id,
+        importedAtIso8601: document.createdAt.toIso8601String(),
+        converterVersion: 'app-shell-import-placeholder',
+      ),
+      sections: const [
+        DocumentSection(
+          id: 'import',
+          title: '가져온 PDF',
+          blockIds: ['import-message'],
+        ),
+      ],
+      blocks: const [
+        DocumentBlock.paragraph(
+          id: 'import-message',
+          sectionId: 'import',
+          text: 'PDF를 앱에 가져왔습니다. 논문 본문을 카카오페이지식 리더로 보려면 Railway 변환 서버 연결 또는 온디바이스 변환 연결이 필요합니다.',
+        ),
+      ],
+      assets: const [],
+    );
   }
 }
