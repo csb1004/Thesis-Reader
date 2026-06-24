@@ -3,12 +3,24 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 part 'app_database.g.dart';
 
+class LibraryFolders extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class Documents extends Table {
   TextColumn get id => text()();
   TextColumn get title => text()();
   TextColumn get sourceFilename => text()();
   TextColumn get localPdfPath => text()();
   TextColumn get packagePath => text().nullable()();
+  TextColumn get folderId =>
+      text().nullable().references(LibraryFolders, #id)();
   TextColumn get status => text()();
   TextColumn get lastReadBlockId => text().nullable()();
   IntColumn get lastReadOffset => integer().nullable()();
@@ -58,16 +70,24 @@ class ViewerSettings extends Table {
   Set<Column<Object>> get primaryKey => {documentId};
 }
 
-@DriftDatabase(tables: [Documents, VocabularyEntries, ViewerSettings])
+@DriftDatabase(
+  tables: [LibraryFolders, Documents, VocabularyEntries, ViewerSettings],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
     : super(executor ?? driftDatabase(name: 'thesis_reader'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.createTable(libraryFolders);
+        await m.addColumn(documents, documents.folderId);
+      }
+    },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
     },

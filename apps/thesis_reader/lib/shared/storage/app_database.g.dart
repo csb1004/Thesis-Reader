@@ -3,6 +3,314 @@
 part of 'app_database.dart';
 
 // ignore_for_file: type=lint
+class $LibraryFoldersTable extends LibraryFolders
+    with TableInfo<$LibraryFoldersTable, LibraryFolder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibraryFoldersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, createdAt, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_folders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LibraryFolder> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LibraryFolder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibraryFolder(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LibraryFoldersTable createAlias(String alias) {
+    return $LibraryFoldersTable(attachedDatabase, alias);
+  }
+}
+
+class LibraryFolder extends DataClass implements Insertable<LibraryFolder> {
+  final String id;
+  final String name;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const LibraryFolder({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  LibraryFoldersCompanion toCompanion(bool nullToAbsent) {
+    return LibraryFoldersCompanion(
+      id: Value(id),
+      name: Value(name),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory LibraryFolder.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibraryFolder(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  LibraryFolder copyWith({
+    String? id,
+    String? name,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => LibraryFolder(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  LibraryFolder copyWithCompanion(LibraryFoldersCompanion data) {
+    return LibraryFolder(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryFolder(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibraryFolder &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class LibraryFoldersCompanion extends UpdateCompanion<LibraryFolder> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const LibraryFoldersCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibraryFoldersCompanion.insert({
+    required String id,
+    required String name,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LibraryFolder> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibraryFoldersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return LibraryFoldersCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryFoldersCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DocumentsTable extends Documents
     with TableInfo<$DocumentsTable, Document> {
   @override
@@ -59,6 +367,20 @@ class $DocumentsTable extends Documents
     true,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
+  );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<String> folderId = GeneratedColumn<String>(
+    'folder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES library_folders (id)',
+    ),
   );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
@@ -120,6 +442,7 @@ class $DocumentsTable extends Documents
     sourceFilename,
     localPdfPath,
     packagePath,
+    folderId,
     status,
     lastReadBlockId,
     lastReadOffset,
@@ -180,6 +503,12 @@ class $DocumentsTable extends Documents
           data['package_path']!,
           _packagePathMeta,
         ),
+      );
+    }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
       );
     }
     if (data.containsKey('status')) {
@@ -253,6 +582,10 @@ class $DocumentsTable extends Documents
         DriftSqlType.string,
         data['${effectivePrefix}package_path'],
       ),
+      folderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}folder_id'],
+      ),
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status'],
@@ -288,6 +621,7 @@ class Document extends DataClass implements Insertable<Document> {
   final String sourceFilename;
   final String localPdfPath;
   final String? packagePath;
+  final String? folderId;
   final String status;
   final String? lastReadBlockId;
   final int? lastReadOffset;
@@ -299,6 +633,7 @@ class Document extends DataClass implements Insertable<Document> {
     required this.sourceFilename,
     required this.localPdfPath,
     this.packagePath,
+    this.folderId,
     required this.status,
     this.lastReadBlockId,
     this.lastReadOffset,
@@ -314,6 +649,9 @@ class Document extends DataClass implements Insertable<Document> {
     map['local_pdf_path'] = Variable<String>(localPdfPath);
     if (!nullToAbsent || packagePath != null) {
       map['package_path'] = Variable<String>(packagePath);
+    }
+    if (!nullToAbsent || folderId != null) {
+      map['folder_id'] = Variable<String>(folderId);
     }
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || lastReadBlockId != null) {
@@ -336,6 +674,9 @@ class Document extends DataClass implements Insertable<Document> {
       packagePath: packagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(packagePath),
+      folderId: folderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(folderId),
       status: Value(status),
       lastReadBlockId: lastReadBlockId == null && nullToAbsent
           ? const Value.absent()
@@ -359,6 +700,7 @@ class Document extends DataClass implements Insertable<Document> {
       sourceFilename: serializer.fromJson<String>(json['sourceFilename']),
       localPdfPath: serializer.fromJson<String>(json['localPdfPath']),
       packagePath: serializer.fromJson<String?>(json['packagePath']),
+      folderId: serializer.fromJson<String?>(json['folderId']),
       status: serializer.fromJson<String>(json['status']),
       lastReadBlockId: serializer.fromJson<String?>(json['lastReadBlockId']),
       lastReadOffset: serializer.fromJson<int?>(json['lastReadOffset']),
@@ -375,6 +717,7 @@ class Document extends DataClass implements Insertable<Document> {
       'sourceFilename': serializer.toJson<String>(sourceFilename),
       'localPdfPath': serializer.toJson<String>(localPdfPath),
       'packagePath': serializer.toJson<String?>(packagePath),
+      'folderId': serializer.toJson<String?>(folderId),
       'status': serializer.toJson<String>(status),
       'lastReadBlockId': serializer.toJson<String?>(lastReadBlockId),
       'lastReadOffset': serializer.toJson<int?>(lastReadOffset),
@@ -389,6 +732,7 @@ class Document extends DataClass implements Insertable<Document> {
     String? sourceFilename,
     String? localPdfPath,
     Value<String?> packagePath = const Value.absent(),
+    Value<String?> folderId = const Value.absent(),
     String? status,
     Value<String?> lastReadBlockId = const Value.absent(),
     Value<int?> lastReadOffset = const Value.absent(),
@@ -400,6 +744,7 @@ class Document extends DataClass implements Insertable<Document> {
     sourceFilename: sourceFilename ?? this.sourceFilename,
     localPdfPath: localPdfPath ?? this.localPdfPath,
     packagePath: packagePath.present ? packagePath.value : this.packagePath,
+    folderId: folderId.present ? folderId.value : this.folderId,
     status: status ?? this.status,
     lastReadBlockId: lastReadBlockId.present
         ? lastReadBlockId.value
@@ -423,6 +768,7 @@ class Document extends DataClass implements Insertable<Document> {
       packagePath: data.packagePath.present
           ? data.packagePath.value
           : this.packagePath,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
       status: data.status.present ? data.status.value : this.status,
       lastReadBlockId: data.lastReadBlockId.present
           ? data.lastReadBlockId.value
@@ -443,6 +789,7 @@ class Document extends DataClass implements Insertable<Document> {
           ..write('sourceFilename: $sourceFilename, ')
           ..write('localPdfPath: $localPdfPath, ')
           ..write('packagePath: $packagePath, ')
+          ..write('folderId: $folderId, ')
           ..write('status: $status, ')
           ..write('lastReadBlockId: $lastReadBlockId, ')
           ..write('lastReadOffset: $lastReadOffset, ')
@@ -459,6 +806,7 @@ class Document extends DataClass implements Insertable<Document> {
     sourceFilename,
     localPdfPath,
     packagePath,
+    folderId,
     status,
     lastReadBlockId,
     lastReadOffset,
@@ -474,6 +822,7 @@ class Document extends DataClass implements Insertable<Document> {
           other.sourceFilename == this.sourceFilename &&
           other.localPdfPath == this.localPdfPath &&
           other.packagePath == this.packagePath &&
+          other.folderId == this.folderId &&
           other.status == this.status &&
           other.lastReadBlockId == this.lastReadBlockId &&
           other.lastReadOffset == this.lastReadOffset &&
@@ -487,6 +836,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
   final Value<String> sourceFilename;
   final Value<String> localPdfPath;
   final Value<String?> packagePath;
+  final Value<String?> folderId;
   final Value<String> status;
   final Value<String?> lastReadBlockId;
   final Value<int?> lastReadOffset;
@@ -499,6 +849,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     this.sourceFilename = const Value.absent(),
     this.localPdfPath = const Value.absent(),
     this.packagePath = const Value.absent(),
+    this.folderId = const Value.absent(),
     this.status = const Value.absent(),
     this.lastReadBlockId = const Value.absent(),
     this.lastReadOffset = const Value.absent(),
@@ -512,6 +863,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     required String sourceFilename,
     required String localPdfPath,
     this.packagePath = const Value.absent(),
+    this.folderId = const Value.absent(),
     required String status,
     this.lastReadBlockId = const Value.absent(),
     this.lastReadOffset = const Value.absent(),
@@ -531,6 +883,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     Expression<String>? sourceFilename,
     Expression<String>? localPdfPath,
     Expression<String>? packagePath,
+    Expression<String>? folderId,
     Expression<String>? status,
     Expression<String>? lastReadBlockId,
     Expression<int>? lastReadOffset,
@@ -544,6 +897,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
       if (sourceFilename != null) 'source_filename': sourceFilename,
       if (localPdfPath != null) 'local_pdf_path': localPdfPath,
       if (packagePath != null) 'package_path': packagePath,
+      if (folderId != null) 'folder_id': folderId,
       if (status != null) 'status': status,
       if (lastReadBlockId != null) 'last_read_block_id': lastReadBlockId,
       if (lastReadOffset != null) 'last_read_offset': lastReadOffset,
@@ -559,6 +913,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     Value<String>? sourceFilename,
     Value<String>? localPdfPath,
     Value<String?>? packagePath,
+    Value<String?>? folderId,
     Value<String>? status,
     Value<String?>? lastReadBlockId,
     Value<int?>? lastReadOffset,
@@ -572,6 +927,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
       sourceFilename: sourceFilename ?? this.sourceFilename,
       localPdfPath: localPdfPath ?? this.localPdfPath,
       packagePath: packagePath ?? this.packagePath,
+      folderId: folderId ?? this.folderId,
       status: status ?? this.status,
       lastReadBlockId: lastReadBlockId ?? this.lastReadBlockId,
       lastReadOffset: lastReadOffset ?? this.lastReadOffset,
@@ -598,6 +954,9 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
     }
     if (packagePath.present) {
       map['package_path'] = Variable<String>(packagePath.value);
+    }
+    if (folderId.present) {
+      map['folder_id'] = Variable<String>(folderId.value);
     }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
@@ -628,6 +987,7 @@ class DocumentsCompanion extends UpdateCompanion<Document> {
           ..write('sourceFilename: $sourceFilename, ')
           ..write('localPdfPath: $localPdfPath, ')
           ..write('packagePath: $packagePath, ')
+          ..write('folderId: $folderId, ')
           ..write('status: $status, ')
           ..write('lastReadBlockId: $lastReadBlockId, ')
           ..write('lastReadOffset: $lastReadOffset, ')
@@ -2034,6 +2394,7 @@ class ViewerSettingsCompanion extends UpdateCompanion<ViewerSetting> {
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $LibraryFoldersTable libraryFolders = $LibraryFoldersTable(this);
   late final $DocumentsTable documents = $DocumentsTable(this);
   late final $VocabularyEntriesTable vocabularyEntries =
       $VocabularyEntriesTable(this);
@@ -2043,12 +2404,304 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
+    libraryFolders,
     documents,
     vocabularyEntries,
     viewerSettings,
   ];
 }
 
+typedef $$LibraryFoldersTableCreateCompanionBuilder =
+    LibraryFoldersCompanion Function({
+      required String id,
+      required String name,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$LibraryFoldersTableUpdateCompanionBuilder =
+    LibraryFoldersCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$LibraryFoldersTableReferences
+    extends BaseReferences<_$AppDatabase, $LibraryFoldersTable, LibraryFolder> {
+  $$LibraryFoldersTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<$DocumentsTable, List<Document>>
+  _documentsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.documents,
+    aliasName: $_aliasNameGenerator(
+      db.libraryFolders.id,
+      db.documents.folderId,
+    ),
+  );
+
+  $$DocumentsTableProcessedTableManager get documentsRefs {
+    final manager = $$DocumentsTableTableManager(
+      $_db,
+      $_db.documents,
+    ).filter((f) => f.folderId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_documentsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$LibraryFoldersTableFilterComposer
+    extends Composer<_$AppDatabase, $LibraryFoldersTable> {
+  $$LibraryFoldersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> documentsRefs(
+    Expression<bool> Function($$DocumentsTableFilterComposer f) f,
+  ) {
+    final $$DocumentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableFilterComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$LibraryFoldersTableOrderingComposer
+    extends Composer<_$AppDatabase, $LibraryFoldersTable> {
+  $$LibraryFoldersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LibraryFoldersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LibraryFoldersTable> {
+  $$LibraryFoldersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> documentsRefs<T extends Object>(
+    Expression<T> Function($$DocumentsTableAnnotationComposer a) f,
+  ) {
+    final $$DocumentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$LibraryFoldersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LibraryFoldersTable,
+          LibraryFolder,
+          $$LibraryFoldersTableFilterComposer,
+          $$LibraryFoldersTableOrderingComposer,
+          $$LibraryFoldersTableAnnotationComposer,
+          $$LibraryFoldersTableCreateCompanionBuilder,
+          $$LibraryFoldersTableUpdateCompanionBuilder,
+          (LibraryFolder, $$LibraryFoldersTableReferences),
+          LibraryFolder,
+          PrefetchHooks Function({bool documentsRefs})
+        > {
+  $$LibraryFoldersTableTableManager(
+    _$AppDatabase db,
+    $LibraryFoldersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibraryFoldersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LibraryFoldersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LibraryFoldersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryFoldersCompanion(
+                id: id,
+                name: name,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryFoldersCompanion.insert(
+                id: id,
+                name: name,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$LibraryFoldersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({documentsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (documentsRefs) db.documents],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (documentsRefs)
+                    await $_getPrefetchedData<
+                      LibraryFolder,
+                      $LibraryFoldersTable,
+                      Document
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LibraryFoldersTableReferences
+                          ._documentsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$LibraryFoldersTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).documentsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.folderId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$LibraryFoldersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LibraryFoldersTable,
+      LibraryFolder,
+      $$LibraryFoldersTableFilterComposer,
+      $$LibraryFoldersTableOrderingComposer,
+      $$LibraryFoldersTableAnnotationComposer,
+      $$LibraryFoldersTableCreateCompanionBuilder,
+      $$LibraryFoldersTableUpdateCompanionBuilder,
+      (LibraryFolder, $$LibraryFoldersTableReferences),
+      LibraryFolder,
+      PrefetchHooks Function({bool documentsRefs})
+    >;
 typedef $$DocumentsTableCreateCompanionBuilder =
     DocumentsCompanion Function({
       required String id,
@@ -2056,6 +2709,7 @@ typedef $$DocumentsTableCreateCompanionBuilder =
       required String sourceFilename,
       required String localPdfPath,
       Value<String?> packagePath,
+      Value<String?> folderId,
       required String status,
       Value<String?> lastReadBlockId,
       Value<int?> lastReadOffset,
@@ -2070,6 +2724,7 @@ typedef $$DocumentsTableUpdateCompanionBuilder =
       Value<String> sourceFilename,
       Value<String> localPdfPath,
       Value<String?> packagePath,
+      Value<String?> folderId,
       Value<String> status,
       Value<String?> lastReadBlockId,
       Value<int?> lastReadOffset,
@@ -2081,6 +2736,25 @@ typedef $$DocumentsTableUpdateCompanionBuilder =
 final class $$DocumentsTableReferences
     extends BaseReferences<_$AppDatabase, $DocumentsTable, Document> {
   $$DocumentsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $LibraryFoldersTable _folderIdTable(_$AppDatabase db) =>
+      db.libraryFolders.createAlias(
+        $_aliasNameGenerator(db.documents.folderId, db.libraryFolders.id),
+      );
+
+  $$LibraryFoldersTableProcessedTableManager? get folderId {
+    final $_column = $_itemColumn<String>('folder_id');
+    if ($_column == null) return null;
+    final manager = $$LibraryFoldersTableTableManager(
+      $_db,
+      $_db.libraryFolders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$VocabularyEntriesTable, List<VocabularyEntry>>
   _vocabularyEntriesRefsTable(_$AppDatabase db) =>
@@ -2186,6 +2860,29 @@ class $$DocumentsTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$LibraryFoldersTableFilterComposer get folderId {
+    final $$LibraryFoldersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.libraryFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LibraryFoldersTableFilterComposer(
+            $db: $db,
+            $table: $db.libraryFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> vocabularyEntriesRefs(
     Expression<bool> Function($$VocabularyEntriesTableFilterComposer f) f,
@@ -2296,6 +2993,29 @@ class $$DocumentsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$LibraryFoldersTableOrderingComposer get folderId {
+    final $$LibraryFoldersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.libraryFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LibraryFoldersTableOrderingComposer(
+            $db: $db,
+            $table: $db.libraryFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$DocumentsTableAnnotationComposer
@@ -2346,6 +3066,29 @@ class $$DocumentsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$LibraryFoldersTableAnnotationComposer get folderId {
+    final $$LibraryFoldersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.libraryFolders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LibraryFoldersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.libraryFolders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<T> vocabularyEntriesRefs<T extends Object>(
     Expression<T> Function($$VocabularyEntriesTableAnnotationComposer a) f,
@@ -2413,6 +3156,7 @@ class $$DocumentsTableTableManager
           (Document, $$DocumentsTableReferences),
           Document,
           PrefetchHooks Function({
+            bool folderId,
             bool vocabularyEntriesRefs,
             bool viewerSettingsRefs,
           })
@@ -2435,6 +3179,7 @@ class $$DocumentsTableTableManager
                 Value<String> sourceFilename = const Value.absent(),
                 Value<String> localPdfPath = const Value.absent(),
                 Value<String?> packagePath = const Value.absent(),
+                Value<String?> folderId = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String?> lastReadBlockId = const Value.absent(),
                 Value<int?> lastReadOffset = const Value.absent(),
@@ -2447,6 +3192,7 @@ class $$DocumentsTableTableManager
                 sourceFilename: sourceFilename,
                 localPdfPath: localPdfPath,
                 packagePath: packagePath,
+                folderId: folderId,
                 status: status,
                 lastReadBlockId: lastReadBlockId,
                 lastReadOffset: lastReadOffset,
@@ -2461,6 +3207,7 @@ class $$DocumentsTableTableManager
                 required String sourceFilename,
                 required String localPdfPath,
                 Value<String?> packagePath = const Value.absent(),
+                Value<String?> folderId = const Value.absent(),
                 required String status,
                 Value<String?> lastReadBlockId = const Value.absent(),
                 Value<int?> lastReadOffset = const Value.absent(),
@@ -2473,6 +3220,7 @@ class $$DocumentsTableTableManager
                 sourceFilename: sourceFilename,
                 localPdfPath: localPdfPath,
                 packagePath: packagePath,
+                folderId: folderId,
                 status: status,
                 lastReadBlockId: lastReadBlockId,
                 lastReadOffset: lastReadOffset,
@@ -2489,14 +3237,49 @@ class $$DocumentsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({vocabularyEntriesRefs = false, viewerSettingsRefs = false}) {
+              ({
+                folderId = false,
+                vocabularyEntriesRefs = false,
+                viewerSettingsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (vocabularyEntriesRefs) db.vocabularyEntries,
                     if (viewerSettingsRefs) db.viewerSettings,
                   ],
-                  addJoins: null,
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (folderId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.folderId,
+                                    referencedTable: $$DocumentsTableReferences
+                                        ._folderIdTable(db),
+                                    referencedColumn: $$DocumentsTableReferences
+                                        ._folderIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (vocabularyEntriesRefs)
@@ -2562,6 +3345,7 @@ typedef $$DocumentsTableProcessedTableManager =
       (Document, $$DocumentsTableReferences),
       Document,
       PrefetchHooks Function({
+        bool folderId,
         bool vocabularyEntriesRefs,
         bool viewerSettingsRefs,
       })
@@ -3483,6 +4267,8 @@ typedef $$ViewerSettingsTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
+  $$LibraryFoldersTableTableManager get libraryFolders =>
+      $$LibraryFoldersTableTableManager(_db, _db.libraryFolders);
   $$DocumentsTableTableManager get documents =>
       $$DocumentsTableTableManager(_db, _db.documents);
   $$VocabularyEntriesTableTableManager get vocabularyEntries =>
