@@ -42,6 +42,7 @@ class LibraryScreen extends StatelessWidget {
     this.onDeleteFolder,
     this.onRenameDocument,
     this.onMoveDocument,
+    this.onReconvertDocument,
     this.onDeleteDocument,
     this.onSettingsPressed,
   });
@@ -60,6 +61,7 @@ class LibraryScreen extends StatelessWidget {
   final ValueChanged<String>? onDeleteFolder;
   final ValueChanged<String>? onRenameDocument;
   final ValueChanged<String>? onMoveDocument;
+  final ValueChanged<String>? onReconvertDocument;
   final ValueChanged<String>? onDeleteDocument;
   final VoidCallback? onSettingsPressed;
 
@@ -99,10 +101,10 @@ class LibraryScreen extends StatelessWidget {
                 final documentList = _DocumentList(
                   documents: visibleDocuments,
                   isFiltered: selectedFolderId != allFolderId,
-                  onImportPressed: onImportPressed,
                   onDocumentSelected: onDocumentSelected,
                   onRenameDocument: onRenameDocument,
                   onMoveDocument: onMoveDocument,
+                  onReconvertDocument: onReconvertDocument,
                   onDeleteDocument: onDeleteDocument,
                 );
 
@@ -306,19 +308,19 @@ class _DocumentList extends StatelessWidget {
   const _DocumentList({
     required this.documents,
     required this.isFiltered,
-    this.onImportPressed,
     this.onDocumentSelected,
     this.onRenameDocument,
     this.onMoveDocument,
+    this.onReconvertDocument,
     this.onDeleteDocument,
   });
 
   final List<LibraryDocumentViewModel> documents;
   final bool isFiltered;
-  final VoidCallback? onImportPressed;
   final ValueChanged<String>? onDocumentSelected;
   final ValueChanged<String>? onRenameDocument;
   final ValueChanged<String>? onMoveDocument;
+  final ValueChanged<String>? onReconvertDocument;
   final ValueChanged<String>? onDeleteDocument;
 
   @override
@@ -345,6 +347,7 @@ class _DocumentList extends StatelessWidget {
               : () => onDocumentSelected!(document.id),
           onRename: onRenameDocument,
           onMove: onMoveDocument,
+          onReconvert: onReconvertDocument,
           onDelete: onDeleteDocument,
         );
       },
@@ -382,6 +385,7 @@ class _LibraryDocumentRow extends StatelessWidget {
     this.onTap,
     this.onRename,
     this.onMove,
+    this.onReconvert,
     this.onDelete,
   });
 
@@ -389,6 +393,7 @@ class _LibraryDocumentRow extends StatelessWidget {
   final VoidCallback? onTap;
   final ValueChanged<String>? onRename;
   final ValueChanged<String>? onMove;
+  final ValueChanged<String>? onReconvert;
   final ValueChanged<String>? onDelete;
 
   @override
@@ -411,6 +416,8 @@ class _LibraryDocumentRow extends StatelessWidget {
                   onRename?.call(document.id);
                 case _DocumentAction.move:
                   onMove?.call(document.id);
+                case _DocumentAction.reconvert:
+                  onReconvert?.call(document.id);
                 case _DocumentAction.delete:
                   onDelete?.call(document.id);
               }
@@ -421,6 +428,10 @@ class _LibraryDocumentRow extends StatelessWidget {
                 child: Text('이름 변경'),
               ),
               PopupMenuItem(value: _DocumentAction.move, child: Text('폴더 이동')),
+              PopupMenuItem(
+                value: _DocumentAction.reconvert,
+                child: Text('PDF 다시 변환'),
+              ),
               PopupMenuItem(value: _DocumentAction.delete, child: Text('삭제')),
             ],
           ),
@@ -445,6 +456,6 @@ class _FolderEntry {
   final bool canEdit;
 }
 
-enum _DocumentAction { rename, move, delete }
+enum _DocumentAction { rename, move, reconvert, delete }
 
 enum _FolderAction { rename, delete }

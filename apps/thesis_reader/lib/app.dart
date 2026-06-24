@@ -141,6 +141,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
       onDeleteFolder: _deleteFolder,
       onRenameDocument: _renameDocument,
       onMoveDocument: _moveDocument,
+      onReconvertDocument: _reconvertDocument,
       onDeleteDocument: _deleteDocument,
       onSettingsPressed: _openSettings,
     );
@@ -319,6 +320,42 @@ class _LibraryHomeState extends State<_LibraryHome> {
     } on Object catch (error) {
       _showSnackBar('논문을 이동할 수 없습니다: $error');
     }
+  }
+
+  Future<void> _reconvertDocument(String documentId) async {
+    final row = await (_appDatabase.select(
+      _appDatabase.documents,
+    )..where((document) => document.id.equals(documentId))).getSingleOrNull();
+    if (row == null) {
+      _showSnackBar('변환할 논문을 찾을 수 없습니다.');
+      return;
+    }
+
+    final localPdf = File(row.localPdfPath);
+    if (!await localPdf.exists()) {
+      _showSnackBar('저장된 원본 PDF를 찾을 수 없습니다.');
+      return;
+    }
+
+    final appDirectory = await getApplicationDocumentsDirectory();
+    _replaceDocumentStatus(documentId, '변환 중');
+    if (mounted) {
+      setState(() {});
+    }
+    _showSnackBar('${row.title} 변환을 다시 시작했습니다.');
+
+    await _convertWithRailway(
+      DocumentRecord(
+        id: row.id,
+        sourceFilename: row.sourceFilename,
+        localPdfPath: row.localPdfPath,
+        status: row.status,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      ),
+      appDirectory,
+    );
+    await _loadSavedDocuments();
   }
 
   Future<void> _deleteDocument(String documentId) async {
@@ -580,7 +617,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
         return;
       }
       setState(() {
-        _replaceDocumentStatus(document.id, '서버 변환 실패 - 임시 보기');
+        _replaceDocumentStatus(document.id, '서버 변환 실패 - 원본 보기');
       });
       ScaffoldMessenger.of(
         context,

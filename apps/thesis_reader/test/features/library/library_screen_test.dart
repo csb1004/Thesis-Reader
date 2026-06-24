@@ -16,6 +16,7 @@ void main() {
     );
 
     expect(find.byIcon(Icons.upload_file), findsOneWidget);
+    expect(find.text('논문이 없습니다'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.upload_file));
     expect(importTapped, isTrue);
@@ -31,7 +32,7 @@ void main() {
             LibraryDocumentViewModel(
               id: 'doc-1',
               title: 'Attention Is All You Need',
-              conversionStatus: 'converted',
+              conversionStatus: '변환 완료',
               lastReadProgress: 0.42,
             ),
           ],
@@ -40,7 +41,7 @@ void main() {
     );
 
     expect(find.text('Attention Is All You Need'), findsOneWidget);
-    expect(find.text('converted'), findsOneWidget);
+    expect(find.text('변환 완료'), findsOneWidget);
     expect(find.text('42%'), findsOneWidget);
   });
 
@@ -75,7 +76,7 @@ void main() {
             LibraryDocumentViewModel(
               id: 'doc-1',
               title: 'Attention Is All You Need',
-              conversionStatus: 'converted',
+              conversionStatus: '변환 완료',
               lastReadProgress: 0.42,
             ),
           ],
@@ -106,14 +107,14 @@ void main() {
             LibraryDocumentViewModel(
               id: 'doc-1',
               title: 'Attention Is All You Need',
-              conversionStatus: 'converted',
+              conversionStatus: '변환 완료',
               lastReadProgress: 0.42,
               folderId: 'folder-1',
             ),
             LibraryDocumentViewModel(
               id: 'doc-2',
               title: 'Other Paper',
-              conversionStatus: 'converted',
+              conversionStatus: '변환 완료',
               lastReadProgress: 0.1,
             ),
           ],
@@ -130,6 +131,7 @@ void main() {
   ) async {
     String? selectedFolderId;
     String? movedDocumentId;
+    String? reconvertedDocumentId;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -145,13 +147,15 @@ void main() {
             LibraryDocumentViewModel(
               id: 'doc-1',
               title: 'Attention Is All You Need',
-              conversionStatus: 'converted',
+              conversionStatus: '변환 완료',
               lastReadProgress: 0.42,
               folderId: 'folder-1',
             ),
           ],
           onFolderSelected: (folderId) => selectedFolderId = folderId,
           onMoveDocument: (documentId) => movedDocumentId = documentId,
+          onReconvertDocument: (documentId) =>
+              reconvertedDocumentId = documentId,
         ),
       ),
     );
@@ -159,11 +163,16 @@ void main() {
     await tester.tap(find.text('Transformer'));
     expect(selectedFolderId, 'folder-1');
 
-    await tester.tap(find.byTooltip('문서 메뉴'));
+    await tester.tap(find.byIcon(Icons.more_vert).last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('폴더 이동'));
-
+    await tester.pumpAndSettle();
     expect(movedDocumentId, 'doc-1');
+
+    await tester.tap(find.byIcon(Icons.more_vert).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PDF 다시 변환'));
+    expect(reconvertedDocumentId, 'doc-1');
   });
 
   testWidgets('import status screen exposes preview and retry actions', (
