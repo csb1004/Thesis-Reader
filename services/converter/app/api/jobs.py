@@ -14,7 +14,8 @@ UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 @router.post("/jobs", response_model=JobSnapshot, status_code=201)
 async def create_job(file: UploadFile) -> JobSnapshot:
-    if file.content_type != "application/pdf":
+    filename = (file.filename or "").lower()
+    if file.content_type != "application/pdf" and not filename.endswith(".pdf"):
         raise HTTPException(status_code=415, detail="Only PDF uploads are supported")
 
     job_id, source_path = job_store.reserve()

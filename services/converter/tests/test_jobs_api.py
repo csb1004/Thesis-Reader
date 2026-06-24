@@ -24,6 +24,13 @@ def test_create_job_accepts_pdf_upload():
     assert body['jobId']
     assert body['status'] in {'queued', 'processing'}
 
+def test_create_job_accepts_pdf_filename_with_generic_content_type():
+    response = client.post(
+        '/jobs',
+        files={'file': ('paper.pdf', b'%PDF-1.4\n%test\n', 'application/octet-stream')},
+    )
+    assert response.status_code == 201
+
 def test_get_job_runs_conversion_for_uploaded_pdf(tmp_path):
     pdf_path = write_simple_paper_pdf(tmp_path / 'paper.pdf')
     create_response = client.post(

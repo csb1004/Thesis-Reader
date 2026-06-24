@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:path/path.dart' as p;
 
 abstract interface class ConverterClient {
@@ -41,7 +42,14 @@ class HttpConverterClient implements ConverterClient {
   @override
   Future<ConverterJob> createJob(File pdf) async {
     final request = http.MultipartRequest('POST', _baseUri.resolve('/jobs'))
-      ..files.add(await http.MultipartFile.fromPath('file', pdf.path));
+      ..files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          pdf.path,
+          filename: _pdfUploadFilename(pdf),
+          contentType: MediaType('application', 'pdf'),
+        ),
+      );
 
     final response = await _httpClient.send(request);
     final body = await response.stream.bytesToString();
@@ -52,6 +60,13 @@ class HttpConverterClient implements ConverterClient {
       jobId: _readString(payload, 'jobId', fallbackKey: 'id'),
       status: parseConverterJobStatus(_readString(payload, 'status')),
     );
+  }
+
+  String _pdfUploadFilename(File pdf) {
+    final basename = p.basename(pdf.path);
+    return p.extension(basename).toLowerCase() == '.pdf'
+        ? basename
+        : '$basename.pdf';
   }
 
   @override
