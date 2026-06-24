@@ -65,26 +65,32 @@ final class ReaderThemeData {
 abstract final class ReaderThemeCatalog {
   static const themes = [
     ReaderThemeData(
+      id: 'white',
+      label: '흰색',
+      backgroundColor: Color(0xFFFFFFFF),
+      textColor: Color(0xFF171717),
+    ),
+    ReaderThemeData(
       id: 'paper',
-      label: 'Paper',
+      label: '종이',
       backgroundColor: Color(0xFFFFF8ED),
       textColor: Color(0xFF252018),
     ),
     ReaderThemeData(
       id: 'cream',
-      label: 'Cream',
+      label: '크림',
       backgroundColor: Color(0xFFF5ECD8),
       textColor: Color(0xFF31271D),
     ),
     ReaderThemeData(
       id: 'green',
-      label: 'Green',
+      label: '초록',
       backgroundColor: Color(0xFFEAF2E3),
       textColor: Color(0xFF1D2A21),
     ),
     ReaderThemeData(
       id: 'dark',
-      label: 'Dark',
+      label: '어두움',
       backgroundColor: Color(0xFF171717),
       textColor: Color(0xFFECE6DA),
     ),
@@ -114,9 +120,9 @@ final class ReaderFontOption {
 
 abstract final class ReaderFontCatalog {
   static const fonts = [
-    ReaderFontOption(id: 'system', label: 'System', fontFamily: null),
-    ReaderFontOption(id: 'serif', label: 'Serif', fontFamily: 'serif'),
-    ReaderFontOption(id: 'monospace', label: 'Mono', fontFamily: 'monospace'),
+    ReaderFontOption(id: 'system', label: '기본', fontFamily: null),
+    ReaderFontOption(id: 'serif', label: '명조', fontFamily: 'serif'),
+    ReaderFontOption(id: 'monospace', label: '고정폭', fontFamily: 'monospace'),
   ];
 
   static String idFor(String? fontFamily) {

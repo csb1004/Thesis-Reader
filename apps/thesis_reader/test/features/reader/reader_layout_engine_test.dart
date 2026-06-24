@@ -69,4 +69,35 @@ void main() {
     expect(large.charsPerLine, lessThan(normal.charsPerLine));
     expect(large.linesPerPage, lessThan(normal.linesPerPage));
   });
+
+  test('page mode keeps only a small footer reserve', () {
+    const package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: [
+        DocumentSection(id: 's1', title: 'Abstract', blockIds: ['b1']),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'b1',
+          sectionId: 's1',
+          text: 'A short paragraph for layout.',
+        ),
+      ],
+      assets: [],
+    );
+
+    final layout = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+      const ReaderViewport(width: 320, height: 640),
+    );
+
+    expect(layout.linesPerPage, greaterThanOrEqualTo(23));
+  });
 }

@@ -25,10 +25,7 @@ final class ViewerSettingsSheet extends StatelessWidget {
               children: [
                 const Icon(Icons.tune),
                 const SizedBox(width: 8),
-                Text(
-                  'Viewer settings',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('보기 설정', style: Theme.of(context).textTheme.titleMedium),
               ],
             ),
             const SizedBox(height: 18),
@@ -39,7 +36,7 @@ final class ViewerSettingsSheet extends StatelessWidget {
             _ReadingModeControl(settings: settings, onChanged: onChanged),
             const SizedBox(height: 18),
             _SettingSlider(
-              label: 'Text size',
+              label: '글자 크기',
               icon: Icons.format_size,
               value: settings.fontScale,
               min: 0.85,
@@ -49,7 +46,7 @@ final class ViewerSettingsSheet extends StatelessWidget {
                   onChanged?.call(settings.copyWith(fontScale: value)),
             ),
             _SettingSlider(
-              label: 'Line height',
+              label: '줄 간격',
               icon: Icons.format_line_spacing,
               value: settings.lineHeight,
               min: 1.2,
@@ -59,7 +56,7 @@ final class ViewerSettingsSheet extends StatelessWidget {
                   onChanged?.call(settings.copyWith(lineHeight: value)),
             ),
             _SettingSlider(
-              label: 'Margin',
+              label: '여백',
               icon: Icons.width_normal,
               value: settings.marginScale,
               min: 0.75,
@@ -88,7 +85,7 @@ final class _ThemeControl extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SettingLabel(icon: Icons.palette_outlined, label: 'Theme'),
+        const _SettingLabel(icon: Icons.palette_outlined, label: '테마'),
         const SizedBox(height: 10),
         Wrap(
           spacing: 10,
@@ -161,7 +158,7 @@ final class _FontFamilyControl extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SettingLabel(icon: Icons.font_download_outlined, label: 'Font'),
+        const _SettingLabel(icon: Icons.font_download_outlined, label: '글꼴'),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -193,19 +190,19 @@ final class _ReadingModeControl extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SettingLabel(icon: Icons.menu_book, label: 'Reading mode'),
+        const _SettingLabel(icon: Icons.menu_book, label: '보기 방식'),
         const SizedBox(height: 8),
         SegmentedButton<ReadingMode>(
           segments: const [
             ButtonSegment(
               value: ReadingMode.page,
               icon: Icon(Icons.view_carousel),
-              label: Text('Page'),
+              label: Text('페이지'),
             ),
             ButtonSegment(
               value: ReadingMode.scroll,
               icon: Icon(Icons.view_day),
-              label: Text('Scroll'),
+              label: Text('스크롤'),
             ),
           ],
           selected: {settings.readingMode},
@@ -232,19 +229,19 @@ final class _AssetOpenModeControl extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SettingLabel(icon: Icons.image, label: 'Open figures'),
+        const _SettingLabel(icon: Icons.image, label: '그림 열기'),
         const SizedBox(height: 8),
         SegmentedButton<AssetOpenMode>(
           segments: const [
             ButtonSegment(
               value: AssetOpenMode.bottomSheet,
               icon: Icon(Icons.vertical_align_top),
-              label: Text('Sheet'),
+              label: Text('아래 창'),
             ),
             ButtonSegment(
               value: AssetOpenMode.fullScreen,
               icon: Icon(Icons.fullscreen),
-              label: Text('Full'),
+              label: Text('전체 화면'),
             ),
           ],
           selected: {settings.assetOpenMode},

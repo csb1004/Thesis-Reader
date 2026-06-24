@@ -100,7 +100,7 @@ final class _ReaderMetrics {
     final margin = 24 * settings.marginScale;
     final contentWidth = math.max(1, viewport.width - margin * 2);
     final effectiveLineHeight = math.max(1, fontSize * settings.lineHeight);
-    final footerReserve = effectiveLineHeight * 2;
+    const footerReserve = 28.0;
     final contentHeight = math.max(
       fontSize,
       viewport.height - margin * 2 - footerReserve,
@@ -126,7 +126,7 @@ final class _ReaderMetrics {
       final wrappedLineCount = explicitLines.fold<int>(0, (sum, line) {
         return sum + math.max(1, (line.length / charsPerLine).ceil());
       });
-      return math.max(1, wrappedLineCount) + 2;
+      return math.max(1, wrappedLineCount) + 1;
     }
 
     return switch (block.kind) {

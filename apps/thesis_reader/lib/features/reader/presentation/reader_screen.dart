@@ -693,6 +693,7 @@ final class _PageModeReader extends StatelessWidget {
   Widget build(BuildContext context) {
     final blocksById = {for (final block in package.blocks) block.id: block};
     final assetsById = {for (final asset in package.assets) asset.id: asset};
+    const footerHeight = 28.0;
 
     return PageView.builder(
       controller: controller,
@@ -729,12 +730,15 @@ final class _PageModeReader extends StatelessWidget {
                     ),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '${page.pageNumber} / ${layout.pages.length}',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: readerTheme.textColor.withValues(alpha: 0.7),
+                SizedBox(
+                  height: footerHeight,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '${page.pageNumber} / ${layout.pages.length}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: readerTheme.textColor.withValues(alpha: 0.7),
+                      ),
                     ),
                   ),
                 ),

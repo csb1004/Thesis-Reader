@@ -10,9 +10,15 @@ void main() {
     );
 
     expect(find.byKey(const Key('reader-theme-paper')), findsOneWidget);
+    expect(find.byKey(const Key('reader-theme-white')), findsOneWidget);
     expect(find.byKey(const Key('reader-theme-dark')), findsOneWidget);
     expect(find.byKey(const Key('reader-font-system')), findsOneWidget);
     expect(find.byKey(const Key('reader-font-serif')), findsOneWidget);
+    expect(find.text('보기 설정'), findsOneWidget);
+    expect(find.text('테마'), findsOneWidget);
+    expect(find.text('글자 크기'), findsOneWidget);
+    expect(find.text('페이지'), findsOneWidget);
+    expect(find.text('스크롤'), findsOneWidget);
     expect(find.byType(Slider), findsNWidgets(3));
     expect(find.byType(SegmentedButton<ReadingMode>), findsOneWidget);
     expect(find.byType(SegmentedButton<AssetOpenMode>), findsOneWidget);
