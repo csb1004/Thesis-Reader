@@ -37,6 +37,7 @@ final class ReaderScreen extends StatefulWidget {
   const ReaderScreen({
     super.key,
     required this.documentId,
+    this.displayTitle,
     this.package,
     this.originalPdfPath,
     this.openAiKeyStore,
@@ -48,10 +49,12 @@ final class ReaderScreen extends StatefulWidget {
     this.initialScrollProgress,
     this.initialSettings = const ReaderSettings(),
     this.onProgressChanged,
+    this.onSettingsChanged,
     this.volumeKeyEvents,
   });
 
   final String documentId;
+  final String? displayTitle;
   final DocumentPackage? package;
   final String? originalPdfPath;
   final OpenAiKeyStore? openAiKeyStore;
@@ -63,6 +66,7 @@ final class ReaderScreen extends StatefulWidget {
   final double? initialScrollProgress;
   final ReaderSettings initialSettings;
   final ValueChanged<ReaderProgress>? onProgressChanged;
+  final ValueChanged<ReaderSettings>? onSettingsChanged;
   final Stream<VolumeKeyEvent>? volumeKeyEvents;
 
   @override
@@ -121,7 +125,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(package?.metadata.title ?? '리더'),
+        title: Text(widget.displayTitle ?? package?.metadata.title ?? '리더'),
         actions: [
           if (package != null)
             IconButton(
@@ -298,6 +302,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               settings: _settings,
               onChanged: (settings) {
                 setState(() => _settings = settings);
+                widget.onSettingsChanged?.call(settings);
                 _syncNativeVolumeKeyNavigation();
                 setSheetState(() {});
               },

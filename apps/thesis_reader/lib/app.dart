@@ -16,11 +16,14 @@ import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
 import 'package:thesis_reader/features/ai/domain/summary_service.dart';
 import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/library/data/converter_client.dart';
+import 'package:thesis_reader/features/library/data/document_package_loader.dart';
 import 'package:thesis_reader/features/library/data/document_repository.dart';
 import 'package:thesis_reader/features/library/data/library_repository.dart';
 import 'package:thesis_reader/features/library/presentation/import_status_screen.dart';
 import 'package:thesis_reader/features/library/presentation/library_screen.dart';
 import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
+import 'package:thesis_reader/features/reader/data/reader_settings_repository.dart';
+import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/settings/presentation/app_settings_screen.dart';
 import 'package:thesis_reader/features/vocabulary/data/vocabulary_repository.dart';
 import 'package:thesis_reader/shared/storage/app_database.dart';
@@ -76,6 +79,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
   SummaryService? _summaryService;
   VocabularyRepository? _vocabularyRepository;
   LibraryRepository? _libraryRepository;
+  ReaderSettingsRepository? _readerSettingsRepository;
   SharedPreferences? _preferences;
   final List<LibraryDocumentViewModel> _documents = [];
   final List<LibraryFolderViewModel> _folders = [];
@@ -83,6 +87,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
   final Map<String, String> _originalPdfPathsByDocumentId = {};
   final Map<String, int> _pageIndexByDocumentId = {};
   final Map<String, double> _scrollProgressByDocumentId = {};
+  final Map<String, ReaderSettings> _settingsByDocumentId = {};
   var _selectedFolderId = LibraryScreen.allFolderId;
   var _isImporting = false;
 
@@ -121,6 +126,9 @@ class _LibraryHomeState extends State<_LibraryHome> {
 
   LibraryRepository get _appLibraryRepository =>
       _libraryRepository ??= DriftLibraryRepository(_appDatabase);
+
+  ReaderSettingsRepository get _appReaderSettingsRepository =>
+      _readerSettingsRepository ??= DriftReaderSettingsRepository(_appDatabase);
 
   Future<SharedPreferences> get _appPreferences async =>
       _preferences ??= await SharedPreferences.getInstance();
@@ -204,8 +212,13 @@ class _LibraryHomeState extends State<_LibraryHome> {
     }
   }
 
-  void _openDocument(String documentId) {
+  Future<void> _openDocument(String documentId) async {
     final package = _packagesByDocumentId[documentId];
+    final documentTitle = _findDocument(documentId)?.title;
+    final settings =
+        _settingsByDocumentId[documentId] ??
+        await _appReaderSettingsRepository.load(documentId);
+    _settingsByDocumentId[documentId] = settings;
     final readablePackage =
         package?.metadata.converterVersion == 'app-shell-import-placeholder'
         ? null
@@ -214,6 +227,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
       MaterialPageRoute(
         builder: (context) => ReaderScreen(
           documentId: documentId,
+          displayTitle: documentTitle,
           package: readablePackage,
           originalPdfPath: _originalPdfPathsByDocumentId[documentId],
           openAiKeyStore: _appOpenAiKeyStore,
@@ -223,7 +237,17 @@ class _LibraryHomeState extends State<_LibraryHome> {
           vocabularyRepository: _appVocabularyRepository,
           initialPageIndex: _pageIndexByDocumentId[documentId],
           initialScrollProgress: _scrollProgressByDocumentId[documentId],
+          initialSettings: settings,
           onProgressChanged: _handleReaderProgress,
+          onSettingsChanged: (settings) {
+            _settingsByDocumentId[documentId] = settings;
+            unawaited(
+              _appReaderSettingsRepository.save(
+                documentId: documentId,
+                settings: settings,
+              ),
+            );
+          },
         ),
       ),
     );
@@ -386,6 +410,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
       _originalPdfPathsByDocumentId.remove(documentId);
       _pageIndexByDocumentId.remove(documentId);
       _scrollProgressByDocumentId.remove(documentId);
+      _settingsByDocumentId.remove(documentId);
       await _loadSavedDocuments();
     } on Object catch (error) {
       _showSnackBar('논문을 삭제할 수 없습니다: $error');
@@ -594,19 +619,25 @@ class _LibraryHomeState extends State<_LibraryHome> {
         job.jobId,
         Directory(p.join(appDirectory.path, 'packages', document.id)),
       );
-      final payload =
-          jsonDecode(await packageFile.readAsString()) as Map<String, Object?>;
-      final convertedPackage = _withPackageAssetPaths(
-        DocumentPackage.fromJson(payload),
-        packageFile.parent,
+      final loadedPackage = await DocumentPackageLoader.load(
+        documentId: document.id,
+        appDirectory: appDirectory,
+        storedPackagePath: packageFile.path,
       );
+      final convertedPackage = loadedPackage?.package;
+      if (convertedPackage == null) {
+        throw StateError('Converted package could not be loaded.');
+      }
       await _markDocumentConverted(document.id, packageFile.path);
 
       if (!mounted) {
         return;
       }
       setState(() {
-        _packagesByDocumentId[document.id] = convertedPackage;
+        _packagesByDocumentId[document.id] = _withDisplayTitle(
+          convertedPackage,
+          _findDocument(document.id)?.title ?? document.sourceFilename,
+        );
         _replaceDocumentStatus(document.id, '변환 완료');
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -724,15 +755,16 @@ class _LibraryHomeState extends State<_LibraryHome> {
       final packageDirectory = Directory(
         p.join(appDirectory.path, 'packages', row.id),
       );
-      final packageFile = File(p.join(packageDirectory.path, 'package.json'));
-      final hasPackage = await packageFile.exists();
-      if (hasPackage) {
-        final payload =
-            jsonDecode(await packageFile.readAsString())
-                as Map<String, Object?>;
-        packagesByDocumentId[row.id] = _withPackageAssetPaths(
-          DocumentPackage.fromJson(payload),
-          packageDirectory,
+      final loadedPackage = await DocumentPackageLoader.load(
+        documentId: row.id,
+        appDirectory: appDirectory,
+        storedPackagePath: row.packagePath,
+      );
+      final hasPackage = loadedPackage != null;
+      if (loadedPackage != null) {
+        packagesByDocumentId[row.id] = _withDisplayTitle(
+          loadedPackage.package,
+          row.title,
         );
       }
 
@@ -855,28 +887,20 @@ class _LibraryHomeState extends State<_LibraryHome> {
     );
   }
 
-  DocumentPackage _withPackageAssetPaths(
-    DocumentPackage package,
-    Directory packageDirectory,
-  ) {
+  DocumentPackage _withDisplayTitle(DocumentPackage package, String title) {
     return DocumentPackage(
       packageVersion: package.packageVersion,
       documentId: package.documentId,
-      metadata: package.metadata,
+      metadata: DocumentMetadata(
+        title: title,
+        sourceFilename: package.metadata.sourceFilename,
+        originalPdfSha256: package.metadata.originalPdfSha256,
+        importedAtIso8601: package.metadata.importedAtIso8601,
+        converterVersion: package.metadata.converterVersion,
+      ),
       sections: package.sections,
       blocks: package.blocks,
-      assets: [
-        for (final asset in package.assets)
-          DocumentAsset(
-            id: asset.id,
-            kind: asset.kind,
-            label: asset.label,
-            relativePath: p.isAbsolute(asset.relativePath)
-                ? asset.relativePath
-                : p.join(packageDirectory.path, asset.relativePath),
-            caption: asset.caption,
-          ),
-      ],
+      assets: package.assets,
       anchors: package.anchors,
       vocabulary: package.vocabulary,
       summaries: package.summaries,

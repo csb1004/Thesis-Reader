@@ -38,6 +38,21 @@ void main() {
     );
   });
 
+  testWidgets('uses the library document title in the app bar', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          displayTitle: 'Attention Is All You Need',
+          package: _packageWithBlocks(['Selectable thesis text']),
+        ),
+      ),
+    );
+
+    expect(find.text('Attention Is All You Need'), findsOneWidget);
+    expect(find.text('Reader Test'), findsNothing);
+  });
+
   testWidgets('reports scroll progress after scroll end', (tester) async {
     final progressChanges = <ReaderProgress>[];
 
