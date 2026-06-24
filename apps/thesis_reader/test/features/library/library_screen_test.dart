@@ -88,6 +88,84 @@ void main() {
     expect(selectedDocumentId, 'doc-1');
   });
 
+  testWidgets('library filters documents by the selected folder', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LibraryScreen(
+          selectedFolderId: 'folder-1',
+          folders: [
+            LibraryFolderViewModel(
+              id: 'folder-1',
+              name: 'Transformer',
+              documentCount: 1,
+            ),
+          ],
+          documents: [
+            LibraryDocumentViewModel(
+              id: 'doc-1',
+              title: 'Attention Is All You Need',
+              conversionStatus: 'converted',
+              lastReadProgress: 0.42,
+              folderId: 'folder-1',
+            ),
+            LibraryDocumentViewModel(
+              id: 'doc-2',
+              title: 'Other Paper',
+              conversionStatus: 'converted',
+              lastReadProgress: 0.1,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('Attention Is All You Need'), findsOneWidget);
+    expect(find.text('Other Paper'), findsNothing);
+  });
+
+  testWidgets('library invokes folder and document action callbacks', (
+    tester,
+  ) async {
+    String? selectedFolderId;
+    String? movedDocumentId;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibraryScreen(
+          folders: const [
+            LibraryFolderViewModel(
+              id: 'folder-1',
+              name: 'Transformer',
+              documentCount: 1,
+            ),
+          ],
+          documents: const [
+            LibraryDocumentViewModel(
+              id: 'doc-1',
+              title: 'Attention Is All You Need',
+              conversionStatus: 'converted',
+              lastReadProgress: 0.42,
+              folderId: 'folder-1',
+            ),
+          ],
+          onFolderSelected: (folderId) => selectedFolderId = folderId,
+          onMoveDocument: (documentId) => movedDocumentId = documentId,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Transformer'));
+    expect(selectedFolderId, 'folder-1');
+
+    await tester.tap(find.byTooltip('문서 메뉴'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('폴더 이동'));
+
+    expect(movedDocumentId, 'doc-1');
+  });
+
   testWidgets('import status screen exposes preview and retry actions', (
     tester,
   ) async {
