@@ -16,14 +16,31 @@ class DocumentFileStore {
   }) async {
     _validateDocumentId(documentId);
 
-    final documentDirectory = Directory(
-      p.join(_rootDirectory.path, 'documents', documentId),
-    );
+    final documentDirectory = _documentDirectory(documentId);
     await documentDirectory.create(recursive: true);
 
     final extension = _safePdfExtension(sourcePdf.path);
     final target = File(p.join(documentDirectory.path, 'source$extension'));
     return sourcePdf.copy(target.path);
+  }
+
+  Future<void> deleteDocumentFiles(String documentId) async {
+    _validateDocumentId(documentId);
+
+    final documentDirectory = _documentDirectory(documentId);
+    final rootPath = p.canonicalize(_rootDirectory.path);
+    final documentPath = p.canonicalize(documentDirectory.path);
+
+    if (!p.isWithin(rootPath, documentPath)) {
+      throw StateError('Refusing to delete files outside the app directory.');
+    }
+    if (await documentDirectory.exists()) {
+      await documentDirectory.delete(recursive: true);
+    }
+  }
+
+  Directory _documentDirectory(String documentId) {
+    return Directory(p.join(_rootDirectory.path, 'documents', documentId));
   }
 
   String _safePdfExtension(String filePath) {

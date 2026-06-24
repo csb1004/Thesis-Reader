@@ -58,6 +58,37 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('deletes only the imported document directory', () async {
+      final (:source, :temp) = await _createSourcePdf();
+      final store = DocumentFileStore(rootDirectory: temp);
+
+      final copied = await store.copyPdfIntoDocumentDirectory(
+        documentId: 'doc-1',
+        sourcePdf: source,
+      );
+      final unrelated = File(p.join(temp.path, 'documents', 'keep.pdf'));
+      await unrelated.create(recursive: true);
+
+      await store.deleteDocumentFiles('doc-1');
+
+      expect(await copied.exists(), isFalse);
+      expect(
+        await Directory(p.join(temp.path, 'documents', 'doc-1')).exists(),
+        isFalse,
+      );
+      expect(await unrelated.exists(), isTrue);
+    });
+
+    test('rejects unsafe ids when deleting files', () async {
+      final temp = await Directory.systemTemp.createTemp('thesis_reader_test');
+      final store = DocumentFileStore(rootDirectory: temp);
+
+      await expectLater(
+        store.deleteDocumentFiles('../escape'),
+        throwsArgumentError,
+      );
+    });
   });
 }
 
