@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/material.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
@@ -65,7 +66,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         title: Text(package?.metadata.title ?? 'Reader'),
         actions: [
           IconButton(
-            tooltip: '뷰어 설정',
+            tooltip: '리더 설정',
             icon: const Icon(Icons.tune),
             onPressed: _showSettings,
           ),
@@ -98,6 +99,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               settings: _settings,
               readerTheme: readerTheme,
               controller: _pageController,
+              onAssetPressed: _openAsset,
               onPageChanged: (pageIndex) {
                 widget.onProgressChanged?.call(
                   ReaderProgress(
@@ -113,6 +115,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               settings: _settings,
               readerTheme: readerTheme,
               controller: _scrollController,
+              onAssetPressed: _openAsset,
               onScrollEnded: _handleScrollEnd,
             ),
           },
@@ -158,6 +161,24 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       },
     );
   }
+
+  void _openAsset(DocumentAsset asset) {
+    switch (_settings.assetOpenMode) {
+      case AssetOpenMode.bottomSheet:
+        showModalBottomSheet<void>(
+          context: context,
+          showDragHandle: true,
+          builder: (context) => _AssetViewerSheet(asset: asset),
+        );
+      case AssetOpenMode.fullScreen:
+        Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (context) => _AssetViewerPage(asset: asset),
+          ),
+        );
+    }
+  }
 }
 
 final class _PageModeReader extends StatelessWidget {
@@ -167,6 +188,7 @@ final class _PageModeReader extends StatelessWidget {
     required this.settings,
     required this.readerTheme,
     required this.controller,
+    required this.onAssetPressed,
     required this.onPageChanged,
   });
 
@@ -175,11 +197,13 @@ final class _PageModeReader extends StatelessWidget {
   final ReaderSettings settings;
   final ReaderThemeData readerTheme;
   final PageController controller;
+  final ValueChanged<DocumentAsset> onAssetPressed;
   final ValueChanged<int> onPageChanged;
 
   @override
   Widget build(BuildContext context) {
     final blocksById = {for (final block in package.blocks) block.id: block};
+    final assetsById = {for (final asset in package.assets) asset.id: asset};
 
     return PageView.builder(
       controller: controller,
@@ -196,6 +220,8 @@ final class _PageModeReader extends StatelessWidget {
                   block: block,
                   settings: settings,
                   readerTheme: readerTheme,
+                  assetsById: assetsById,
+                  onAssetPressed: onAssetPressed,
                 ),
             Align(
               alignment: Alignment.centerRight,
@@ -219,6 +245,7 @@ final class _ScrollModeReader extends StatelessWidget {
     required this.settings,
     required this.readerTheme,
     required this.controller,
+    required this.onAssetPressed,
     required this.onScrollEnded,
   });
 
@@ -226,10 +253,13 @@ final class _ScrollModeReader extends StatelessWidget {
   final ReaderSettings settings;
   final ReaderThemeData readerTheme;
   final ScrollController controller;
+  final ValueChanged<DocumentAsset> onAssetPressed;
   final ValueChanged<ScrollMetrics> onScrollEnded;
 
   @override
   Widget build(BuildContext context) {
+    final assetsById = {for (final asset in package.assets) asset.id: asset};
+
     return NotificationListener<ScrollEndNotification>(
       onNotification: (notification) {
         onScrollEnded(notification.metrics);
@@ -247,6 +277,8 @@ final class _ScrollModeReader extends StatelessWidget {
                   block: package.blocks[index],
                   settings: settings,
                   readerTheme: readerTheme,
+                  assetsById: assetsById,
+                  onAssetPressed: onAssetPressed,
                 );
               },
             ),
@@ -262,11 +294,15 @@ final class _ReaderBlock extends StatelessWidget {
     required this.block,
     required this.settings,
     required this.readerTheme,
+    required this.assetsById,
+    required this.onAssetPressed,
   });
 
   final DocumentBlock block;
   final ReaderSettings settings;
   final ReaderThemeData readerTheme;
+  final Map<String, DocumentAsset> assetsById;
+  final ValueChanged<DocumentAsset> onAssetPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -280,7 +316,13 @@ final class _ReaderBlock extends StatelessWidget {
     if (block.text case final text?) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
-        child: SelectableText(text, style: textStyle),
+        child: _ReferenceSelectableText(
+          text: text,
+          referenceSpans: block.referenceSpans,
+          assetsById: assetsById,
+          style: textStyle,
+          onAssetPressed: onAssetPressed,
+        ),
       );
     }
 
@@ -295,6 +337,219 @@ final class _ReaderBlock extends StatelessWidget {
           block.assetId ?? block.kind.name,
           style: TextStyle(color: readerTheme.textColor),
         ),
+      ),
+    );
+  }
+}
+
+final class _ReferenceSelectableText extends StatefulWidget {
+  const _ReferenceSelectableText({
+    required this.text,
+    required this.referenceSpans,
+    required this.assetsById,
+    required this.style,
+    required this.onAssetPressed,
+  });
+
+  final String text;
+  final List<ReferenceSpan> referenceSpans;
+  final Map<String, DocumentAsset> assetsById;
+  final TextStyle style;
+  final ValueChanged<DocumentAsset> onAssetPressed;
+
+  @override
+  State<_ReferenceSelectableText> createState() =>
+      _ReferenceSelectableTextState();
+}
+
+final class _ReferenceSelectableTextState
+    extends State<_ReferenceSelectableText> {
+  final List<TapGestureRecognizer> _recognizers = [];
+
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _disposeRecognizers();
+
+    final validSpans = [
+      for (final span in _validReferenceSpans(
+        widget.text,
+        widget.referenceSpans,
+      ))
+        if (widget.assetsById.containsKey(span.targetAssetId)) span,
+    ];
+
+    if (validSpans.isEmpty) {
+      return SelectableText(widget.text, style: widget.style);
+    }
+
+    var offset = 0;
+    final children = <InlineSpan>[];
+    final accentColor = Theme.of(context).colorScheme.primary;
+
+    for (final span in validSpans) {
+      final asset = widget.assetsById[span.targetAssetId]!;
+      if (offset < span.start) {
+        children.add(TextSpan(text: widget.text.substring(offset, span.start)));
+      }
+
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => widget.onAssetPressed(asset);
+      _recognizers.add(recognizer);
+
+      children.add(
+        TextSpan(
+          text: widget.text.substring(span.start, span.end),
+          style: TextStyle(
+            color: accentColor,
+            decoration: TextDecoration.underline,
+            decorationColor: accentColor,
+            decorationThickness: 1.5,
+          ),
+          recognizer: recognizer,
+        ),
+      );
+      offset = span.end;
+    }
+
+    if (offset < widget.text.length) {
+      children.add(TextSpan(text: widget.text.substring(offset)));
+    }
+
+    return SelectableText.rich(
+      TextSpan(style: widget.style, children: children),
+    );
+  }
+
+  void _disposeRecognizers() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
+}
+
+List<ReferenceSpan> _validReferenceSpans(
+  String text,
+  List<ReferenceSpan> referenceSpans,
+) {
+  var cursor = 0;
+  final validSpans = <ReferenceSpan>[];
+  final sortedSpans = [...referenceSpans]
+    ..sort((a, b) {
+      final startComparison = a.start.compareTo(b.start);
+      if (startComparison != 0) {
+        return startComparison;
+      }
+      return a.end.compareTo(b.end);
+    });
+
+  for (final span in sortedSpans) {
+    if (span.start < cursor ||
+        span.start < 0 ||
+        span.end <= span.start ||
+        span.end > text.length) {
+      continue;
+    }
+
+    validSpans.add(span);
+    cursor = span.end;
+  }
+
+  return validSpans;
+}
+
+final class _AssetViewerSheet extends StatelessWidget {
+  const _AssetViewerSheet({required this.asset});
+
+  final DocumentAsset asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      key: const Key('reader-asset-bottom-sheet'),
+      child: _AssetDetailPanel(asset: asset),
+    );
+  }
+}
+
+final class _AssetViewerPage extends StatelessWidget {
+  const _AssetViewerPage({required this.asset});
+
+  final DocumentAsset asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const Key('reader-asset-fullscreen'),
+      appBar: AppBar(title: Text(asset.label)),
+      body: SafeArea(child: _AssetDetailPanel(asset: asset)),
+    );
+  }
+}
+
+final class _AssetDetailPanel extends StatelessWidget {
+  const _AssetDetailPanel({required this.asset});
+
+  final DocumentAsset asset;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.image_outlined, size: 32),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(asset.label, style: textTheme.titleLarge),
+                    Text(asset.kind.name, style: textTheme.labelMedium),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: Theme.of(context).dividerColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              height: 180,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    '자산 미리보기를 사용할 수 없습니다.\n${asset.relativePath}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (asset.caption case final caption?) ...[
+            const SizedBox(height: 16),
+            Text(caption, style: textTheme.bodyLarge),
+          ],
+          const SizedBox(height: 12),
+          SelectableText(asset.relativePath, style: textTheme.bodySmall),
+        ],
       ),
     );
   }
