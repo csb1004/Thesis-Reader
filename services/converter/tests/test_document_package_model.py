@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from services.converter.app.models.document_package import (
     AssetKind,
     BlockKind,
@@ -61,3 +64,20 @@ def test_minimal_document_package_serializes_to_contract_keys():
     assert payload["packageVersion"] == 1
     assert payload["metadata"]["sourceFilename"] == "paper.pdf"
     assert payload["blocks"][0]["kind"] == "paragraph"
+
+
+def test_document_package_rejects_unexpected_fields():
+    with pytest.raises(ValidationError):
+        DocumentPackage(
+            packageVersion=1,
+            documentId="doc-1",
+            metadata=DocumentMetadata(
+                title="Attention Is All You Need",
+                sourceFilename="paper.pdf",
+                originalPdfSha256="abc123",
+            ),
+            sections=[],
+            blocks=[],
+            assets=[],
+            unexpected="nope",
+        )

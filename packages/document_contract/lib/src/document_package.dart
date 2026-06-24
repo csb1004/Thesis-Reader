@@ -33,12 +33,27 @@ final class DocumentPackage {
       metadata: DocumentMetadata.fromJson(
         json['metadata']! as Map<String, Object?>,
       ),
-      sections: _readList(json['sections'], DocumentSection.fromJson),
-      blocks: _readList(json['blocks'], DocumentBlock.fromJson),
-      assets: _readList(json['assets'], DocumentAsset.fromJson),
-      anchors: _readList(json['anchors'], ReadingAnchor.fromJson),
-      vocabulary: _readList(json['vocabulary'], VocabularyEntry.fromJson),
-      summaries: _readList(json['summaries'], SectionSummary.fromJson),
+      sections: _readRequiredList(
+        json['sections'],
+        'sections',
+        DocumentSection.fromJson,
+      ),
+      blocks: _readRequiredList(
+        json['blocks'],
+        'blocks',
+        DocumentBlock.fromJson,
+      ),
+      assets: _readRequiredList(
+        json['assets'],
+        'assets',
+        DocumentAsset.fromJson,
+      ),
+      anchors: _readOptionalList(json['anchors'], ReadingAnchor.fromJson),
+      vocabulary: _readOptionalList(
+        json['vocabulary'],
+        VocabularyEntry.fromJson,
+      ),
+      summaries: _readOptionalList(json['summaries'], SectionSummary.fromJson),
     );
   }
 
@@ -79,7 +94,7 @@ final class DocumentMetadata {
     return DocumentMetadata(
       title: json['title']! as String,
       sourceFilename: json['sourceFilename']! as String,
-      authors: _readStringList(json['authors']),
+      authors: _readOptionalStringList(json['authors']),
       originalPdfSha256: json['originalPdfSha256']! as String,
       importedAtIso8601: json['importedAtIso8601'] as String?,
       converterVersion: json['converterVersion'] as String?,
@@ -114,7 +129,7 @@ final class DocumentSection {
     return DocumentSection(
       id: json['id']! as String,
       title: json['title']! as String,
-      blockIds: _readStringList(json['blockIds']),
+      blockIds: _readRequiredStringList(json['blockIds'], 'blockIds'),
     );
   }
 
@@ -162,7 +177,10 @@ final class DocumentBlock {
       kind: _enumFromName(BlockKind.values, json['kind']! as String),
       text: json['text'] as String?,
       assetId: json['assetId'] as String?,
-      referenceSpans: _readList(json['referenceSpans'], ReferenceSpan.fromJson),
+      referenceSpans: _readOptionalList(
+        json['referenceSpans'],
+        ReferenceSpan.fromJson,
+      ),
       anchor: _readObject(json['anchor'], ReadingAnchor.fromJson),
     );
   }
@@ -384,7 +402,21 @@ T? _readObject<T>(
   return fromJson(value as Map<String, Object?>);
 }
 
-List<T> _readList<T>(
+List<T> _readRequiredList<T>(
+  Object? value,
+  String fieldName,
+  T Function(Map<String, Object?> json) fromJson,
+) {
+  if (value == null) {
+    throw FormatException('Missing required list field: $fieldName');
+  }
+
+  return (value as List<Object?>)
+      .map((item) => fromJson(item! as Map<String, Object?>))
+      .toList();
+}
+
+List<T> _readOptionalList<T>(
   Object? value,
   T Function(Map<String, Object?> json) fromJson,
 ) {
@@ -393,6 +425,14 @@ List<T> _readList<T>(
       .toList();
 }
 
-List<String> _readStringList(Object? value) {
+List<String> _readRequiredStringList(Object? value, String fieldName) {
+  if (value == null) {
+    throw FormatException('Missing required list field: $fieldName');
+  }
+
+  return (value as List<Object?>).cast<String>();
+}
+
+List<String> _readOptionalStringList(Object? value) {
   return (value as List<Object?>? ?? const []).cast<String>();
 }
