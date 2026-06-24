@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thesis-reader.local/contracts/document_package.schema.json",
+  "title": "DocumentPackage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "packageVersion",
+    "documentId",
+    "metadata",
+    "sections",
+    "blocks",
+    "assets"
+  ],
+  "properties": {
+    "packageVersion": {
+      "type": "integer"
+    },
+    "documentId": {
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/DocumentMetadata"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DocumentSection"
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DocumentBlock"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DocumentAsset"
+      }
+    },
+    "anchors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ReadingAnchor"
+      },
+      "default": []
+    },
+    "vocabulary": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VocabularyEntry"
+      },
+      "default": []
+    },
+    "summaries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SectionSummary"
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "BlockKind": {
+      "type": "string",
+      "enum": [
+        "heading",
+        "paragraph",
+        "quote",
+        "figure",
+        "table",
+        "equation",
+        "footnote",
+        "reference"
+      ]
+    },
+    "AssetKind": {
+      "type": "string",
+      "enum": [
+        "figure",
+        "table",
+        "equation",
+        "pageRegion",
+        "thumbnail"
+      ]
+    },
+    "ReferenceKind": {
+      "type": "string",
+      "enum": [
+        "figure",
+        "table",
+        "equation",
+        "footnote",
+        "citation",
+        "reference"
+      ]
+    },
+    "DocumentMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "sourceFilename",
+        "originalPdfSha256"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "sourceFilename": {
+          "type": "string"
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "originalPdfSha256": {
+          "type": "string"
+        },
+        "importedAtIso8601": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "converterVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "DocumentSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "blockIds"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "blockIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "DocumentBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sectionId",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sectionId": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/BlockKind"
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "referenceSpans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReferenceSpan"
+          },
+          "default": []
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReadingAnchor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "DocumentAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "relativePath"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssetKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "caption": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ReferenceSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end",
+        "targetAssetId",
+        "kind"
+      ],
+      "properties": {
+        "start": {
+          "type": "integer"
+        },
+        "end": {
+          "type": "integer"
+        },
+        "targetAssetId": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ReferenceKind"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ReadingAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId",
+        "textOffset"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "textOffset": {
+          "type": "integer"
+        },
+        "originalPdfPage": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "originalPdfRect": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "VocabularyEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "documentId",
+        "expression",
+        "expressionKey",
+        "meaningKo",
+        "sourceSentence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "documentId": {
+          "type": "string"
+        },
+        "expression": {
+          "type": "string"
+        },
+        "expressionKey": {
+          "type": "string"
+        },
+        "meaningKo": {
+          "type": "string"
+        },
+        "sourceSentence": {
+          "type": "string"
+        },
+        "contextBefore": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contextAfter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReadingAnchor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "userMeaning": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userMemo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "SectionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sectionId",
+        "summaryKo",
+        "createdAtIso8601"
+      ],
+      "properties": {
+        "sectionId": {
+          "type": "string"
+        },
+        "summaryKo": {
+          "type": "string"
+        },
+        "createdAtIso8601": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
