@@ -115,6 +115,47 @@ void main() {
     expect(spacious.linesPerPage, lessThanOrEqualTo(21));
   });
 
+  test('page mode reserves fixed top and bottom safe reading space', () {
+    const package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: [
+        DocumentSection(id: 's1', title: 'Abstract', blockIds: ['b1']),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'b1',
+          sectionId: 's1',
+          text: 'A short paragraph for layout.',
+        ),
+      ],
+      assets: [],
+    );
+
+    final full = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+      const ReaderViewport(width: 360, height: 720),
+    );
+    final reserved = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+      const ReaderViewport(
+        width: 360,
+        height: 720,
+        topReserve: 88,
+        bottomReserve: 24,
+      ),
+    );
+
+    expect(reserved.linesPerPage, lessThan(full.linesPerPage));
+  });
+
   test('keeps section headings with following body instead of orphaning them', () {
     final package = DocumentPackage(
       packageVersion: 1,

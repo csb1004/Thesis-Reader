@@ -17,6 +17,9 @@ import 'package:thesis_reader/features/vocabulary/data/vocabulary_repository.dar
 import 'package:thesis_reader/features/vocabulary/presentation/vocabulary_screen.dart';
 import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
 
+const _readerTopChromeReserve = kToolbarHeight + 8;
+const _readerBottomInsetReserve = 12.0;
+
 final class ReaderProgress {
   const ReaderProgress({
     required this.documentId,
@@ -181,12 +184,17 @@ final class _ReaderScreenState extends State<ReaderScreen> {
   Widget _buildReader(DocumentPackage package) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final mediaPadding = MediaQuery.paddingOf(context);
+        final topReserve = mediaPadding.top + _readerTopChromeReserve;
+        final bottomReserve = mediaPadding.bottom + _readerBottomInsetReserve;
         final layout = ReaderLayoutEngine.paginate(
           package,
           _settings,
           ReaderViewport(
             width: constraints.maxWidth,
             height: constraints.maxHeight,
+            topReserve: topReserve,
+            bottomReserve: bottomReserve,
           ),
         );
         _pageCount = layout.pages.length;
@@ -205,6 +213,8 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               settings: _settings,
               readerTheme: readerTheme,
               controller: _pageController,
+              topReserve: topReserve,
+              bottomReserve: bottomReserve,
               onAssetPressed: _openAsset,
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
@@ -216,6 +226,8 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               settings: _settings,
               readerTheme: readerTheme,
               controller: _scrollController,
+              topReserve: topReserve,
+              bottomReserve: bottomReserve,
               onAssetPressed: _openAsset,
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
@@ -728,6 +740,8 @@ final class _PageModeReader extends StatelessWidget {
     required this.settings,
     required this.readerTheme,
     required this.controller,
+    required this.topReserve,
+    required this.bottomReserve,
     required this.onAssetPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
@@ -740,6 +754,8 @@ final class _PageModeReader extends StatelessWidget {
   final ReaderSettings settings;
   final ReaderThemeData readerTheme;
   final PageController controller;
+  final double topReserve;
+  final double bottomReserve;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
@@ -750,7 +766,7 @@ final class _PageModeReader extends StatelessWidget {
   Widget build(BuildContext context) {
     final blocksById = {for (final block in package.blocks) block.id: block};
     final assetsById = {for (final asset in package.assets) asset.id: asset};
-    final footerHeight = 56.0 * settings.bottomMarginScale;
+    final footerHeight = 56.0 * settings.bottomMarginScale + bottomReserve;
 
     return PageView.builder(
       controller: controller,
@@ -760,7 +776,12 @@ final class _PageModeReader extends StatelessWidget {
         final page = layout.pages[index];
         final margin = 24 * settings.marginScale;
         return Padding(
-          padding: EdgeInsets.fromLTRB(margin, margin, margin, margin),
+          padding: EdgeInsets.fromLTRB(
+            margin,
+            margin + topReserve,
+            margin,
+            margin,
+          ),
           child: ClipRect(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -911,6 +932,8 @@ final class _ScrollModeReader extends StatelessWidget {
     required this.settings,
     required this.readerTheme,
     required this.controller,
+    required this.topReserve,
+    required this.bottomReserve,
     required this.onAssetPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
@@ -922,6 +945,8 @@ final class _ScrollModeReader extends StatelessWidget {
   final ReaderSettings settings;
   final ReaderThemeData readerTheme;
   final ScrollController controller;
+  final double topReserve;
+  final double bottomReserve;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
@@ -941,7 +966,12 @@ final class _ScrollModeReader extends StatelessWidget {
         controller: controller,
         slivers: [
           SliverPadding(
-            padding: EdgeInsets.all(24 * settings.marginScale),
+            padding: EdgeInsets.fromLTRB(
+              24 * settings.marginScale,
+              24 * settings.marginScale + topReserve,
+              24 * settings.marginScale,
+              24 * settings.marginScale + bottomReserve,
+            ),
             sliver: SliverList.builder(
               itemCount: package.blocks.length,
               itemBuilder: (context, index) {

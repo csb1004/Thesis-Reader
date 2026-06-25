@@ -132,4 +132,51 @@ void main() {
       'sequence modeling and transduction models',
     );
   });
+
+  test('normalizes cached wrapped words and label line breaks', () async {
+    final temp = await Directory.systemTemp.createTemp('package_loader_test');
+    final packageFile = File(
+      p.join(temp.path, 'packages', 'doc-1', 'package.json'),
+    );
+    await packageFile.parent.create(recursive: true);
+    await packageFile.writeAsString(
+      jsonEncode({
+        'packageVersion': 1,
+        'documentId': 'doc-1',
+        'metadata': {
+          'title': 'Cached title',
+          'sourceFilename': 'paper.pdf',
+          'originalPdfSha256': 'abc123',
+          'converterVersion': 'mvp-1',
+        },
+        'sections': [
+          {
+            'id': 'sec-1',
+            'title': 'Document',
+            'blockIds': ['block-1'],
+          },
+        ],
+        'blocks': [
+          {
+            'id': 'block-1',
+            'sectionId': 'sec-1',
+            'kind': 'paragraph',
+            'text': 'transduc- tion models\nDecoder:\nThe stack is repeated.',
+          },
+        ],
+        'assets': [],
+      }),
+    );
+
+    final loaded = await DocumentPackageLoader.load(
+      documentId: 'doc-1',
+      appDirectory: temp,
+      storedPackagePath: null,
+    );
+
+    expect(
+      loaded?.package.blocks.single.text,
+      'transduction models Decoder: The stack is repeated.',
+    );
+  });
 }

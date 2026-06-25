@@ -101,9 +101,10 @@ abstract final class DocumentPackageLoader {
   }
 
   static String _joinHyphenatedLineBreaks(String text) {
-    return text.replaceAllMapped(
-      RegExp(r'([A-Za-z])-\s*\r?\n\s*([A-Za-z])'),
+    final joinedWords = text.replaceAllMapped(
+      RegExp(r'([A-Za-z])-\s+([A-Za-z])'),
       (match) => '${match.group(1)}${match.group(2)}',
     );
+    return joinedWords.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 }

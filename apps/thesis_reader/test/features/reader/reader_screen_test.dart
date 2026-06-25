@@ -109,6 +109,23 @@ void main() {
     expect(after.height, before.height);
   });
 
+  testWidgets('page text starts below the hidden top chrome reserve', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['First visible reader line']),
+        ),
+      ),
+    );
+
+    final textTop = tester.getRect(find.text('First visible reader line')).top;
+
+    expect(textTop, greaterThan(kToolbarHeight));
+  });
+
   testWidgets('bottom slider changes the current page when chrome is visible', (
     tester,
   ) async {

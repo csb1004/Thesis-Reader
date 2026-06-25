@@ -4,10 +4,17 @@ import 'package:document_contract/document_contract.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 
 final class ReaderViewport {
-  const ReaderViewport({required this.width, required this.height});
+  const ReaderViewport({
+    required this.width,
+    required this.height,
+    this.topReserve = 0,
+    this.bottomReserve = 0,
+  });
 
   final double width;
   final double height;
+  final double topReserve;
+  final double bottomReserve;
 }
 
 final class ReaderPage {
@@ -127,7 +134,11 @@ final class _ReaderMetrics {
     final footerReserve = 56.0 * settings.bottomMarginScale;
     final contentHeight = math.max(
       fontSize,
-      viewport.height - margin * 2 - footerReserve,
+      viewport.height -
+          margin * 2 -
+          viewport.topReserve -
+          viewport.bottomReserve -
+          footerReserve,
     );
     final averageCharWidth = fontSize * 0.55;
 
