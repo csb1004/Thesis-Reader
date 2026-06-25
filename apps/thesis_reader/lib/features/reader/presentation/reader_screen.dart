@@ -221,6 +221,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               topReserve: topReserve,
               bottomReserve: bottomReserve,
               onAssetPressed: _openAsset,
+              onCitationPressed: _openCitationReference,
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
@@ -234,6 +235,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               topReserve: topReserve,
               bottomReserve: bottomReserve,
               onAssetPressed: _openAsset,
+              onCitationPressed: _openCitationReference,
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
@@ -398,6 +400,30 @@ final class _ReaderScreenState extends State<ReaderScreen> {
           ),
         );
     }
+  }
+
+  void _openCitationReference(String citationLabel) {
+    final package = widget.package;
+    if (package == null) {
+      return;
+    }
+
+    final references = _referenceBlocksForCitation(package, citationLabel);
+    if (references.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$citationLabel reference not found')),
+      );
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _ReferenceViewerSheet(
+        citationLabel: citationLabel,
+        references: references,
+      ),
+    );
   }
 
   void _openVocabulary() {
@@ -748,6 +774,7 @@ final class _PageModeReader extends StatelessWidget {
     required this.topReserve,
     required this.bottomReserve,
     required this.onAssetPressed,
+    required this.onCitationPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -762,6 +789,7 @@ final class _PageModeReader extends StatelessWidget {
   final double topReserve;
   final double bottomReserve;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final ValueChanged<String> onCitationPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -808,6 +836,7 @@ final class _PageModeReader extends StatelessWidget {
                               assetsById: assetsById,
                               addBottomSpacing: !item.continuesAfter,
                               onAssetPressed: onAssetPressed,
+                              onCitationPressed: onCitationPressed,
                               onSimpleTranslateSelection:
                                   onSimpleTranslateSelection,
                               onTranslateSelection: onTranslateSelection,
@@ -981,6 +1010,7 @@ final class _ScrollModeReader extends StatelessWidget {
     required this.topReserve,
     required this.bottomReserve,
     required this.onAssetPressed,
+    required this.onCitationPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -994,6 +1024,7 @@ final class _ScrollModeReader extends StatelessWidget {
   final double topReserve;
   final double bottomReserve;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final ValueChanged<String> onCitationPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -1027,6 +1058,7 @@ final class _ScrollModeReader extends StatelessWidget {
                   readerTheme: readerTheme,
                   assetsById: assetsById,
                   onAssetPressed: onAssetPressed,
+                  onCitationPressed: onCitationPressed,
                   onSimpleTranslateSelection: onSimpleTranslateSelection,
                   onTranslateSelection: onTranslateSelection,
                   onAddVocabulary: onAddVocabulary,
@@ -1048,6 +1080,7 @@ final class _ReaderBlock extends StatelessWidget {
     required this.assetsById,
     this.addBottomSpacing = true,
     required this.onAssetPressed,
+    required this.onCitationPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -1059,6 +1092,7 @@ final class _ReaderBlock extends StatelessWidget {
   final Map<String, DocumentAsset> assetsById;
   final bool addBottomSpacing;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final ValueChanged<String> onCitationPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -1090,6 +1124,7 @@ final class _ReaderBlock extends StatelessWidget {
                 )
               : textStyle,
           onAssetPressed: onAssetPressed,
+          onCitationPressed: onCitationPressed,
           onSimpleTranslateSelection: onSimpleTranslateSelection,
           onTranslateSelection: onTranslateSelection,
           onAddVocabulary: onAddVocabulary,
@@ -1220,6 +1255,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
     required this.assetsById,
     required this.style,
     required this.onAssetPressed,
+    required this.onCitationPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -1230,6 +1266,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
   final Map<String, DocumentAsset> assetsById;
   final TextStyle style;
   final ValueChanged<DocumentAsset> onAssetPressed;
+  final ValueChanged<String> onCitationPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -1280,13 +1317,20 @@ final class _ReferenceSelectableTextState
       }
 
       if (span.kind == ReferenceKind.citation) {
+        final label = span.label ?? widget.text.substring(span.start, span.end);
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () => widget.onCitationPressed(label);
+        _recognizers.add(recognizer);
+
         children.add(
           TextSpan(
             text: widget.text.substring(span.start, span.end),
             style: TextStyle(
-              color: widget.style.color?.withValues(alpha: 0.82),
+              color: accentColor,
               fontStyle: FontStyle.italic,
+              fontFeatures: const [FontFeature('ital')],
             ),
+            recognizer: recognizer,
           ),
         );
         offset = span.end;
@@ -1408,6 +1452,34 @@ List<ReferenceSpan> _validReferenceSpans(
   return validSpans;
 }
 
+List<DocumentBlock> _referenceBlocksForCitation(
+  DocumentPackage package,
+  String citationLabel,
+) {
+  final numbers = RegExp(
+    r'\d+',
+  ).allMatches(citationLabel).map((match) => match.group(0)!).toList();
+  if (numbers.isEmpty) {
+    return const [];
+  }
+
+  final referenceBlocks = [
+    for (final block in package.blocks)
+      if (block.kind == BlockKind.reference && block.text != null) block,
+  ];
+  final references = <DocumentBlock>[];
+  for (final number in numbers) {
+    final pattern = RegExp('^\\[\\s*$number\\s*\\]');
+    for (final block in referenceBlocks) {
+      if (pattern.hasMatch(block.text!.trim())) {
+        references.add(block);
+        break;
+      }
+    }
+  }
+  return references;
+}
+
 final class _AssetViewerSheet extends StatelessWidget {
   const _AssetViewerSheet({required this.asset});
 
@@ -1418,6 +1490,57 @@ final class _AssetViewerSheet extends StatelessWidget {
     return SafeArea(
       key: const Key('reader-asset-bottom-sheet'),
       child: _AssetDetailPanel(asset: asset),
+    );
+  }
+}
+
+final class _ReferenceViewerSheet extends StatelessWidget {
+  const _ReferenceViewerSheet({
+    required this.citationLabel,
+    required this.references,
+  });
+
+  final String citationLabel;
+  final List<DocumentBlock> references;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return SafeArea(
+      key: const Key('reader-reference-bottom-sheet'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.format_quote_outlined, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(citationLabel, style: textTheme.titleLarge),
+                      Text('Reference', style: textTheme.labelMedium),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            for (var index = 0; index < references.length; index++) ...[
+              SelectableText(
+                references[index].text ?? '',
+                style: textTheme.bodyLarge,
+              ),
+              if (index != references.length - 1) const Divider(height: 28),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

@@ -389,7 +389,7 @@ void main() {
     expect(referenceSpan.style?.color, isNotNull);
   });
 
-  testWidgets('renders citation references as italic non-clickable spans', (
+  testWidgets('opens citation references as italic tappable spans', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -401,15 +401,27 @@ void main() {
       ),
     );
 
-    final selectable = tester.widget<SelectableText>(
-      find.byType(SelectableText),
-    );
-    final citationSpan = selectable.textSpan!.children!
-        .whereType<TextSpan>()
-        .singleWhere((span) => span.text == '[36]');
+    final citationSpan = _textSpanWithText(tester, '[36]');
 
-    expect(citationSpan.recognizer, isNull);
+    expect(citationSpan.recognizer, isNotNull);
     expect(citationSpan.style?.fontStyle, FontStyle.italic);
+    expect(
+      citationSpan.style?.fontFeatures,
+      contains(const FontFeature('ital')),
+    );
+
+    (citationSpan.recognizer! as TapGestureRecognizer).onTap!();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('reader-reference-bottom-sheet')),
+      findsOneWidget,
+    );
+    expect(find.text('[36]'), findsWidgets);
+    expect(
+      find.textContaining('Label smoothing improves Transformer quality.'),
+      findsWidgets,
+    );
   });
 
   testWidgets('reader selection uses thesis actions instead of platform menu', (
@@ -700,7 +712,7 @@ DocumentPackage _packageWithCitation() {
       originalPdfSha256: 'abc123',
     ),
     sections: const [
-      DocumentSection(id: 's1', title: 'Body', blockIds: ['b1']),
+      DocumentSection(id: 's1', title: 'Body', blockIds: ['b1', 'ref-36']),
     ],
     blocks: const [
       DocumentBlock.paragraph(
@@ -715,6 +727,13 @@ DocumentPackage _packageWithCitation() {
             kind: ReferenceKind.citation,
           ),
         ],
+      ),
+      DocumentBlock(
+        id: 'ref-36',
+        sectionId: 's1',
+        kind: BlockKind.reference,
+        text:
+            '[36] Ashish Vaswani et al. Label smoothing improves Transformer quality.',
       ),
     ],
     assets: const [],
@@ -732,6 +751,23 @@ TapGestureRecognizer _referenceTapRecognizer(WidgetTester tester) {
           .singleWhere((span) => span.text == 'Figure 1')
           .recognizer!
       as TapGestureRecognizer;
+}
+
+TextSpan _textSpanWithText(WidgetTester tester, String text) {
+  for (final selectable in tester.widgetList<SelectableText>(
+    find.byType(SelectableText),
+  )) {
+    final span = selectable.textSpan;
+    if (span == null) {
+      continue;
+    }
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      if (child is TextSpan && child.text == text) {
+        return child;
+      }
+    }
+  }
+  throw StateError('No TextSpan found for $text');
 }
 
 DocumentPackage _package({List<ReferenceSpan>? referenceSpans}) {
