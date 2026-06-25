@@ -312,7 +312,8 @@ final class _ReaderMetrics {
     }
 
     return switch (block.kind) {
-      BlockKind.figure || BlockKind.table || BlockKind.equation => 8,
+      BlockKind.equation => 4,
+      BlockKind.figure || BlockKind.table => 8,
       _ => 2,
     };
   }

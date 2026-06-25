@@ -25,8 +25,8 @@ REFERENCE_PATTERNS = (
     (re.compile(r"\(\d+\)"), ReferenceKind.equation, AssetKind.equation, "eq"),
 )
 EQUATION_CLIP_LEFT_PADDING = 32.0
-EQUATION_CLIP_RIGHT_PADDING = 56.0
-EQUATION_CLIP_VERTICAL_PADDING = 24.0
+EQUATION_CLIP_RIGHT_PADDING = 80.0
+EQUATION_CLIP_VERTICAL_PADDING = 8.0
 
 
 def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -> DocumentPackage:
@@ -150,7 +150,7 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             equation is not None and _looks_like_equation_continuation(line["text"])
         ):
             flush_current()
-            if equation is not None and _should_merge_lines(equation, line):
+            if equation is not None and _should_merge_equation_lines(equation, line):
                 equation["text"] = f'{equation["text"]} {line["text"]}'
                 equation["rect"] = _union_rect(equation["rect"], line["rect"])
             else:
@@ -190,13 +190,46 @@ def _looks_like_equation_line(text: str) -> bool:
     if re.fullmatch(r"\(\d+\)", stripped):
         return False
     word_count = len(stripped.split())
+    if stripped.endswith((".", ",", ";")):
+        return False
     if "=" in stripped and word_count <= 14:
+        if _looks_like_inline_math_sentence(stripped):
+            return False
         return True
-    if re.search(r"[∈∑√≤≥×^_]|[A-Z]\s*[=∈]", stripped) and word_count <= 10:
+    if word_count == 1:
+        return False
+    if (
+        re.search(r"[∈∑√≤≥×^_]|[A-Z]\s*[=∈]", stripped)
+        and word_count <= 10
+        and not _looks_like_inline_math_sentence(stripped)
+    ):
         return True
     return bool(
         re.search(r"\b(?:Attention|softmax|MultiHead|Concat|head\w*)\b", stripped)
         and "=" in stripped
+    )
+
+
+def _looks_like_inline_math_sentence(text: str) -> bool:
+    words = re.findall(r"[A-Za-z]{2,}", text.lower())
+    if len(words) < 7:
+        return False
+    return any(
+        word
+        in {
+            "during",
+            "training",
+            "we",
+            "employed",
+            "value",
+            "this",
+            "the",
+            "where",
+            "used",
+            "with",
+            "for",
+        }
+        for word in words
     )
 
 
@@ -206,11 +239,54 @@ def _looks_like_equation_continuation(text: str) -> bool:
         return False
     if re.fullmatch(r"\(\d+\)", stripped):
         return True
-    if len(stripped.split()) > 14:
+    if len(stripped.split()) > 6:
         return False
     if stripped.endswith((".", ":", ";")):
         return False
-    return bool(re.search(r"[=∈∑√≤≥×^_()]|[A-Z]\s*[A-Z]", stripped))
+    compact = re.sub(r"\s+", "", stripped)
+    if len(compact) > 40:
+        return False
+    prose_words = re.findall(r"[A-Za-z]{3,}", stripped.lower())
+    if len(prose_words) >= 2 and any(
+        word
+        in {
+            "the",
+            "and",
+            "are",
+            "with",
+            "using",
+            "attention",
+            "function",
+            "functions",
+            "algorithm",
+            "except",
+            "scaling",
+            "factor",
+        }
+        for word in prose_words
+    ):
+        return False
+    if any(not character.isalnum() for character in compact):
+        return True
+    uppercase_tokens = re.findall(r"\b[A-Z]{1,3}\b", stripped)
+    return bool(uppercase_tokens and len(prose_words) <= 1)
+
+
+def _should_merge_equation_lines(previous: dict, current: dict) -> bool:
+    if previous["page"] != current["page"]:
+        return False
+
+    previous_rect = previous["rect"]
+    current_rect = current["rect"]
+    vertical_overlap = min(previous_rect[3], current_rect[3]) - max(
+        previous_rect[1],
+        current_rect[1],
+    )
+    if vertical_overlap >= -4:
+        return True
+
+    vertical_gap = current_rect[1] - previous_rect[3]
+    return 0 <= vertical_gap <= 24
 
 
 def _should_merge_lines(previous: dict, current: dict) -> bool:
@@ -223,6 +299,8 @@ def _should_merge_lines(previous: dict, current: dict) -> bool:
     current_rect = current["rect"]
     if _same_text_block(previous_rect, current_rect):
         return True
+    if _overlaps_same_text_flow(previous_rect, current_rect):
+        return True
 
     vertical_gap = current_rect[1] - previous_rect[3]
     return -4 <= vertical_gap <= 24
@@ -230,6 +308,13 @@ def _should_merge_lines(previous: dict, current: dict) -> bool:
 
 def _same_text_block(left: list[float], right: list[float]) -> bool:
     return all(abs(left[index] - right[index]) < 0.5 for index in range(4))
+
+
+def _overlaps_same_text_flow(left: list[float], right: list[float]) -> bool:
+    vertical_overlap = min(left[3], right[3]) - max(left[1], right[1])
+    if vertical_overlap <= 0:
+        return False
+    return right[0] <= left[2] + 8 and right[2] >= left[0] - 8
 
 
 def _looks_like_heading(text: str) -> bool:

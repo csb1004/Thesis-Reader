@@ -8,6 +8,7 @@ from services.converter.app.models.document_package import AssetKind, BlockKind
 from services.converter.app.models.document_package import DocumentAsset
 from services.converter.tests.fixtures import (
     write_attention_equation_pdf,
+    write_attention_equation_with_following_prose_pdf,
     write_hyphenated_line_pdf,
     write_simple_paper_pdf,
     write_unlabeled_equation_pdf,
@@ -85,11 +86,110 @@ def test_exports_attention_equation_as_image_asset(tmp_path):
     ]
 
     assert equation_blocks
+    assert len(equation_blocks) == 1
     assert equation_assets
     assert equation_blocks[0].assetId == equation_assets[0].id
     assert (output_dir / equation_assets[0].relativePath).is_file()
     assert "Attention(Q, K, V)" not in text
     assert "QKT" not in text
+
+
+def test_keeps_following_prose_out_of_attention_equation_asset(tmp_path):
+    pdf_path = write_attention_equation_with_following_prose_pdf(
+        tmp_path / "equation-with-prose.pdf"
+    )
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        document_id="doc-1",
+    )
+
+    text = " ".join(block.text or "" for block in package.blocks)
+    equation_blocks = [
+        block for block in package.blocks if block.kind == BlockKind.equation
+    ]
+    equation_assets = [
+        asset for asset in package.assets if asset.kind == AssetKind.equation
+    ]
+
+    assert len(equation_blocks) == 1
+    assert len(equation_assets) == 1
+    assert "Attention(Q, K, V)" not in text
+    assert "QKT" not in text
+    assert "√dk" not in text
+    assert "The two most commonly used attention functions" in text
+    assert "dot-product (multiplicative) attention" in text
+
+
+def test_keeps_inline_math_fragments_inside_paragraphs():
+    lines = [
+        {
+            "text": "To counteract this effect, we scale the dot products by",
+            "page": 1,
+            "rect": [72.0, 100.0, 504.0, 120.0],
+        },
+        {
+            "text": "√dk .",
+            "page": 1,
+            "rect": [440.0, 112.0, 460.0, 132.0],
+        },
+    ]
+
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(lines)
+
+    assert all(
+        paragraph.get("kind") != BlockKind.equation for paragraph in paragraphs
+    )
+    assert paragraphs[0]["text"] == (
+        "To counteract this effect, we scale the dot products by √dk."
+    )
+
+
+def test_keeps_inline_equations_inside_prose_sentences():
+    lines = [
+        {
+            "text": "During training, we employed label smoothing of value ϵls = 0.1 [36]. This",
+            "page": 1,
+            "rect": [72.0, 100.0, 504.0, 120.0],
+        },
+        {
+            "text": "hurts perplexity, but improves accuracy and BLEU score.",
+            "page": 1,
+            "rect": [72.0, 116.0, 504.0, 136.0],
+        },
+    ]
+
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(lines)
+
+    assert all(
+        paragraph.get("kind") != BlockKind.equation for paragraph in paragraphs
+    )
+    assert paragraphs[0]["text"] == (
+        "During training, we employed label smoothing of value ϵls = 0.1 [36]. "
+        "This hurts perplexity, but improves accuracy and BLEU score."
+    )
+
+
+def test_keeps_tiny_table_math_fragments_out_of_equation_blocks():
+    lines = [
+        {
+            "text": "Training Cost (FLOPs)",
+            "page": 1,
+            "rect": [72.0, 100.0, 200.0, 120.0],
+        },
+        {
+            "text": "×106",
+            "page": 1,
+            "rect": [210.0, 100.0, 240.0, 120.0],
+        },
+    ]
+
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(lines)
+
+    assert all(
+        paragraph.get("kind") != BlockKind.equation for paragraph in paragraphs
+    )
 
 
 def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):
@@ -110,7 +210,7 @@ def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):
     assert height < 220
 
 
-def test_equation_clip_keeps_extra_padding_for_math_overhang():
+def test_equation_clip_keeps_horizontal_padding_without_broad_vertical_crop():
     page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
     line = {"rect": [72, 100, 320, 130]}
     asset = DocumentAsset(
@@ -123,9 +223,9 @@ def test_equation_clip_keeps_extra_padding_for_math_overhang():
     clip = pdf_converter._asset_clip(page, line, asset)
 
     assert clip.x0 <= 40
-    assert clip.y0 <= 76
     assert clip.x1 >= 368
-    assert clip.y1 >= 154
+    assert clip.y0 <= 92
+    assert clip.y1 >= 138
 
 
 def _png_dimensions(path):

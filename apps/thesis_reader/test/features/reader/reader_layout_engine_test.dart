@@ -362,6 +362,66 @@ void main() {
     );
   });
 
+  test('keeps compact equation blocks with surrounding text when page has room', () {
+    const package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: [
+        DocumentSection(
+          id: 's1',
+          title: 'Body',
+          blockIds: ['before', 'equation', 'after'],
+        ),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'before',
+          sectionId: 's1',
+          text:
+              'We compute the attention function on a set of queries '
+              'simultaneously, packed together into a matrix Q.',
+        ),
+        DocumentBlock(
+          id: 'equation',
+          sectionId: 's1',
+          kind: BlockKind.equation,
+          assetId: 'eq-1',
+        ),
+        DocumentBlock.paragraph(
+          id: 'after',
+          sectionId: 's1',
+          text:
+              'The two most commonly used attention functions are additive '
+              'attention and dot-product attention.',
+        ),
+      ],
+      assets: [
+        DocumentAsset(
+          id: 'eq-1',
+          kind: AssetKind.equation,
+          label: '(1)',
+          relativePath: 'assets/eq-1.png',
+        ),
+      ],
+    );
+
+    final layout = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+      const ReaderViewport(width: 360, height: 420),
+    );
+
+    expect(
+      layout.pages.first.blockIds,
+      containsAllInOrder(['before', 'equation', 'after']),
+    );
+  });
+
   test('first page chunk does not exceed rendered content height', () {
     final package = DocumentPackage(
       packageVersion: 1,

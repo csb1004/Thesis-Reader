@@ -54,6 +54,30 @@ def write_attention_equation_pdf(path: Path) -> Path:
     return path
 
 
+def write_attention_equation_with_following_prose_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Equation Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(72, 720, "We compute the matrix of outputs as:")
+    c.drawString(180, 696, "Attention(Q, K, V ) = softmax(QKT")
+    c.drawString(318, 680, "?쉊k")
+    c.drawString(340, 696, ")V")
+    c.drawString(440, 696, "(1)")
+    c.drawString(
+        72,
+        656,
+        "The two most commonly used attention functions are additive attention [2], and dot-product (multi-",
+    )
+    c.drawString(
+        72,
+        640,
+        "plicative) attention. Dot-product attention is identical to our algorithm.",
+    )
+    c.save()
+    return path
+
+
 def write_unlabeled_equation_pdf(path: Path) -> Path:
     c = canvas.Canvas(str(path))
     c.setFont("Helvetica-Bold", 16)
