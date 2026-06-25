@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:document_contract/document_contract.dart';
+import 'package:flutter/painting.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 
 const _pageBottomGuardLines = 1;
@@ -231,6 +232,8 @@ final class _ReaderMetrics {
   const _ReaderMetrics({
     required this.charsPerLine,
     required this.linesPerPage,
+    required this.contentWidth,
+    required this.textStyle,
   });
 
   factory _ReaderMetrics.from(
@@ -239,7 +242,7 @@ final class _ReaderMetrics {
   ) {
     final fontSize = 16 * settings.fontScale;
     final margin = 24 * settings.marginScale;
-    final contentWidth = math.max(1, viewport.width - margin * 2);
+    final contentWidth = math.max(1.0, viewport.width - margin * 2);
     final effectiveLineHeight = math.max(1, fontSize * settings.lineHeight);
     final footerReserve = 56.0 * settings.bottomMarginScale;
     final contentHeight = math.max(
@@ -257,11 +260,19 @@ final class _ReaderMetrics {
     return _ReaderMetrics(
       charsPerLine: math.max(8, (contentWidth / averageCharWidth).floor()),
       linesPerPage: math.max(1, rawLinesPerPage - _pageBottomGuardLines),
+      contentWidth: contentWidth,
+      textStyle: TextStyle(
+        fontFamily: settings.fontFamily,
+        fontSize: fontSize,
+        height: settings.lineHeight,
+      ),
     );
   }
 
   final int charsPerLine;
   final int linesPerPage;
+  final double contentWidth;
+  final TextStyle textStyle;
 
   List<_TextLine> wrapText(String text) {
     final normalized = text.trim();
@@ -269,33 +280,29 @@ final class _ReaderMetrics {
       return const [_TextLine(0, 0)];
     }
 
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: contentWidth);
     final lines = <_TextLine>[];
-    int? lineStart;
-    var lineEnd = 0;
-    var lineLength = 0;
-    for (final match in RegExp(r'\S+').allMatches(text)) {
-      final wordLength = match.end - match.start;
-      if (lineStart == null) {
-        lineStart = match.start;
-        lineEnd = match.end;
-        lineLength = wordLength;
-        continue;
+    var offset = 0;
+    while (offset < text.length) {
+      final boundary = painter.getLineBoundary(TextPosition(offset: offset));
+      var start = boundary.start;
+      var end = boundary.end;
+      while (start < end && text[start].trim().isEmpty) {
+        start += 1;
       }
-
-      if (lineLength + 1 + wordLength > charsPerLine) {
-        lines.add(_TextLine(lineStart, lineEnd));
-        lineStart = match.start;
-        lineEnd = match.end;
-        lineLength = wordLength;
-      } else {
-        lineEnd = match.end;
-        lineLength += 1 + wordLength;
+      while (end > start && text[end - 1].trim().isEmpty) {
+        end -= 1;
       }
+      if (start < end) {
+        lines.add(_TextLine(start, end));
+      }
+      final nextOffset = math.max(boundary.end, offset + 1);
+      offset = nextOffset;
     }
 
-    if (lineStart != null) {
-      lines.add(_TextLine(lineStart, lineEnd));
-    }
     return lines.isEmpty ? const [_TextLine(0, 0)] : List.unmodifiable(lines);
   }
 

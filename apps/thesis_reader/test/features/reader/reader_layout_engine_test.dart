@@ -1,4 +1,5 @@
 import 'package:document_contract/document_contract.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
@@ -346,15 +347,81 @@ void main() {
 
     final layout = ReaderLayoutEngine.paginate(
       package,
-      const ReaderSettings(fontScale: 1.6, lineHeight: 1.5),
+      const ReaderSettings(fontScale: 1.3, lineHeight: 1.5),
       const ReaderViewport(
         width: 360,
-        height: 640,
+        height: 720,
         topReserve: 88,
         bottomReserve: 12,
       ),
     );
 
-    expect(layout.pages.first.items.single.text, contains('tion models'));
+    expect(
+      layout.pages.first.items.single.text,
+      contains('compelling sequence'),
+    );
+  });
+
+  test('first page chunk does not exceed rendered content height', () {
+    final package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: const DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: const [
+        DocumentSection(id: 's1', title: 'Body', blockIds: ['body']),
+      ],
+      blocks: const [
+        DocumentBlock.paragraph(
+          id: 'body',
+          sectionId: 's1',
+          text:
+              'ht, as a function of the previous hidden state ht−1 and the '
+              'input for position t. This inherently sequential nature '
+              'precludes parallelization within training examples, which '
+              'becomes critical at longer sequence lengths, as memory '
+              'constraints limit batching across examples. Recent work has '
+              'achieved significant improvements in computational efficiency '
+              'through factorization tricks [21] and conditional computation '
+              '[32], while also improving model performance in case of the '
+              'latter. The fundamental constraint of sequential computation, '
+              'however, remains. Attention mechanisms have become an integral '
+              'part of compelling sequence modeling and transduc- tion models '
+              'in various tasks.',
+        ),
+      ],
+      assets: const [],
+    );
+    const settings = ReaderSettings(fontScale: 1.6, lineHeight: 1.5);
+    const viewport = ReaderViewport(
+      width: 360,
+      height: 640,
+      topReserve: 88,
+      bottomReserve: 12,
+    );
+
+    final layout = ReaderLayoutEngine.paginate(package, settings, viewport);
+    final text = layout.pages.first.items.single.text!;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: 16 * settings.fontScale,
+          height: settings.lineHeight,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: viewport.width - 48);
+    final contentHeight =
+        viewport.height -
+        48 -
+        viewport.topReserve -
+        viewport.bottomReserve -
+        56 * settings.bottomMarginScale;
+
+    expect(painter.height, lessThanOrEqualTo(contentHeight));
   });
 }

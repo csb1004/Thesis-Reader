@@ -1169,6 +1169,7 @@ final class _ReferenceSelectableTextState
       return SelectableText(
         widget.text,
         style: widget.style,
+        textScaler: TextScaler.noScaling,
         contextMenuBuilder: _buildContextMenu,
       );
     }
@@ -1208,6 +1209,7 @@ final class _ReferenceSelectableTextState
 
     return SelectableText.rich(
       TextSpan(style: widget.style, children: children),
+      textScaler: TextScaler.noScaling,
       contextMenuBuilder: _buildContextMenu,
     );
   }

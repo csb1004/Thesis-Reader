@@ -38,6 +38,26 @@ void main() {
     );
   });
 
+  testWidgets('reader body text uses only in-app font scaling', (tester) async {
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: MaterialApp(
+          home: ReaderScreen(
+            documentId: 'doc-1',
+            package: _packageWithBlocks(['Selectable thesis text']),
+          ),
+        ),
+      ),
+    );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+
+    expect(selectable.textScaler, TextScaler.noScaling);
+  });
+
   testWidgets('uses the library document title in the app bar', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
