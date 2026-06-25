@@ -389,6 +389,29 @@ void main() {
     expect(referenceSpan.style?.color, isNotNull);
   });
 
+  testWidgets('renders citation references as italic non-clickable spans', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithCitation(),
+        ),
+      ),
+    );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+    final citationSpan = selectable.textSpan!.children!
+        .whereType<TextSpan>()
+        .singleWhere((span) => span.text == '[36]');
+
+    expect(citationSpan.recognizer, isNull);
+    expect(citationSpan.style?.fontStyle, FontStyle.italic);
+  });
+
   testWidgets('reader selection uses thesis actions instead of platform menu', (
     tester,
   ) async {
@@ -450,7 +473,10 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('reader-inline-asset-table-1')), findsOneWidget);
+    expect(
+      find.byKey(const Key('reader-inline-asset-table-1')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('opens referenced asset in fullscreen mode', (tester) async {
@@ -660,6 +686,38 @@ DocumentPackage _packageWithTableAsset(String tablePath) {
         relativePath: tablePath,
       ),
     ],
+  );
+}
+
+DocumentPackage _packageWithCitation() {
+  const text = 'Label smoothing improves BLEU [36].';
+  return DocumentPackage(
+    packageVersion: 1,
+    documentId: 'doc-1',
+    metadata: const DocumentMetadata(
+      title: 'Reader Test',
+      sourceFilename: 'reader.pdf',
+      originalPdfSha256: 'abc123',
+    ),
+    sections: const [
+      DocumentSection(id: 's1', title: 'Body', blockIds: ['b1']),
+    ],
+    blocks: const [
+      DocumentBlock.paragraph(
+        id: 'b1',
+        sectionId: 's1',
+        text: text,
+        referenceSpans: [
+          ReferenceSpan(
+            start: 30,
+            end: 34,
+            targetAssetId: '',
+            kind: ReferenceKind.citation,
+          ),
+        ],
+      ),
+    ],
+    assets: const [],
   );
 }
 

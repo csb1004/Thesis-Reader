@@ -1149,7 +1149,9 @@ final class _InlineAssetPreview extends StatelessWidget {
 
     if (isImage && file.existsSync()) {
       return ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: _inlineAssetMaxHeight(asset.kind)),
+        constraints: BoxConstraints(
+          maxHeight: _inlineAssetMaxHeight(asset.kind),
+        ),
         child: Image.file(
           file,
           fit: BoxFit.contain,
@@ -1251,11 +1253,13 @@ final class _ReferenceSelectableTextState
   Widget build(BuildContext context) {
     _disposeRecognizers();
 
-    final existingTargetSpans = [
+    final renderableSpans = [
       for (final span in widget.referenceSpans)
-        if (widget.assetsById.containsKey(span.targetAssetId)) span,
+        if (span.kind == ReferenceKind.citation ||
+            widget.assetsById.containsKey(span.targetAssetId))
+          span,
     ];
-    final validSpans = _validReferenceSpans(widget.text, existingTargetSpans);
+    final validSpans = _validReferenceSpans(widget.text, renderableSpans);
 
     if (validSpans.isEmpty) {
       return SelectableText(
@@ -1271,11 +1275,25 @@ final class _ReferenceSelectableTextState
     final accentColor = Theme.of(context).colorScheme.primary;
 
     for (final span in validSpans) {
-      final asset = widget.assetsById[span.targetAssetId]!;
       if (offset < span.start) {
         children.add(TextSpan(text: widget.text.substring(offset, span.start)));
       }
 
+      if (span.kind == ReferenceKind.citation) {
+        children.add(
+          TextSpan(
+            text: widget.text.substring(span.start, span.end),
+            style: TextStyle(
+              color: widget.style.color?.withValues(alpha: 0.82),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        );
+        offset = span.end;
+        continue;
+      }
+
+      final asset = widget.assetsById[span.targetAssetId]!;
       final recognizer = TapGestureRecognizer()
         ..onTap = () => widget.onAssetPressed(asset);
       _recognizers.add(recognizer);

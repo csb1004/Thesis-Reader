@@ -665,6 +665,132 @@ def test_asset_image_source_prefers_block_anchor_over_earlier_reference():
     assert match == table_line
 
 
+def test_attention_visualization_region_becomes_figure_asset():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "Input-Input Layer5Attention Visualizations",
+                "page": 13,
+                "rect": [108.0, 62.5, 250.5, 86.0],
+            },
+            {
+                "text": "governments",
+                "page": 13,
+                "rect": [237.1, 115.5, 245.8, 160.5],
+            },
+            {
+                "text": "<pad>",
+                "page": 13,
+                "rect": [482.1, 138.4, 490.8, 160.5],
+            },
+            {
+                "text": "voting",
+                "page": 13,
+                "rect": [365.4, 139.7, 374.1, 160.5],
+            },
+            {
+                "text": "of",
+                "page": 13,
+                "rect": [213.8, 154.0, 222.4, 160.5],
+            },
+            {
+                "text": "Figure 3: An example of the attention mechanism following long-distance dependencies in the",
+                "page": 13,
+                "rect": [108.0, 310.7, 504.0, 322.7],
+            },
+            {
+                "text": "encoder self-attention in layer 5 of 6. Many of the attention heads attend to a distant dependency of",
+                "page": 13,
+                "rect": [108.0, 321.6, 504.0, 333.7],
+            },
+            {
+                "text": "the verb making, completing the phrase making...more difficult.",
+                "page": 13,
+                "rect": [108.0, 332.6, 504.0, 344.6],
+            },
+            {
+                "text": "Acknowledgements",
+                "page": 13,
+                "rect": [108.0, 388.0, 220.0, 402.0],
+            },
+        ]
+    )
+
+    figure_regions = [
+        paragraph for paragraph in paragraphs if paragraph.get("kind") == BlockKind.figure
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.figure
+    )
+
+    assert len(figure_regions) == 1
+    assert "Figure 3" in figure_regions[0]["text"]
+    assert "<pad>" in figure_regions[0]["text"]
+    assert "voting" in figure_regions[0]["text"]
+    assert "<pad>" not in plain_text
+    assert "voting" not in plain_text
+    assert "Acknowledgements" in plain_text
+
+
+def test_references_section_splits_numbered_entries():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "References",
+                "page": 12,
+                "rect": [108.0, 60.0, 180.0, 74.0],
+            },
+            {
+                "text": "[35] Ilya Sutskever, Oriol Vinyals, and Quoc VV Le. Sequence to sequence learning with neural",
+                "page": 12,
+                "rect": [108.0, 493.0, 504.0, 505.0],
+            },
+            {
+                "text": "networks. In Advances in Neural Information Processing Systems, pages 3104-3112, 2014.",
+                "page": 12,
+                "rect": [129.6, 504.0, 494.1, 516.0],
+            },
+            {
+                "text": "[36] Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jonathon Shlens, and Zbigniew Wojna.",
+                "page": 12,
+                "rect": [108.0, 527.4, 505.7, 539.4],
+            },
+            {
+                "text": "Rethinking the inception architecture for computer vision. CoRR, abs/1512.00567, 2015.",
+                "page": 12,
+                "rect": [129.6, 538.3, 484.3, 550.3],
+            },
+        ]
+    )
+
+    reference_entries = [
+        paragraph
+        for paragraph in paragraphs
+        if paragraph.get("kind") == BlockKind.reference
+    ]
+
+    assert len(reference_entries) == 2
+    assert reference_entries[0]["text"].startswith("[35]")
+    assert "3104-3112, 2014." in reference_entries[0]["text"]
+    assert reference_entries[1]["text"].startswith("[36]")
+    assert "Rethinking the inception" in reference_entries[1]["text"]
+
+
+def test_reference_spans_marks_inline_citations_without_assets():
+    spans = pdf_converter._reference_spans(
+        "The input or output sequences [2, 19] are discussed in prior work [27].",
+        {},
+    )
+
+    assert [(span.kind, span.label) for span in spans] == [
+        (ReferenceKind.citation, "[2, 19]"),
+        (ReferenceKind.citation, "[27]"),
+    ]
+    assert all(span.targetAssetId == "" for span in spans)
+
+
 def _png_dimensions(path):
     data = path.read_bytes()
     return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")

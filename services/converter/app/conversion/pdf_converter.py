@@ -24,6 +24,7 @@ REFERENCE_PATTERNS = (
     (re.compile(r"\bTable\s+\d+\b"), ReferenceKind.table, AssetKind.table, "table"),
     (re.compile(r"\(\d+\)"), ReferenceKind.equation, AssetKind.equation, "eq"),
 )
+CITATION_PATTERN = re.compile(r"\[(?:\d+\s*,\s*)*\d+\]")
 EQUATION_CLIP_LEFT_PADDING = 32.0
 EQUATION_CLIP_RIGHT_PADDING = 80.0
 EQUATION_CLIP_VERTICAL_PADDING = 8.0
@@ -123,14 +124,39 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
                     anchor=anchor,
                 )
             )
-        else:
+        elif line.get("kind") == BlockKind.figure:
+            label = _figure_label(line["text"], len(assets_by_label) + 1)
+            asset = assets_by_label.setdefault(
+                label,
+                DocumentAsset(
+                    id=f"fig-{_reference_number(label)}",
+                    kind=AssetKind.figure,
+                    label=label,
+                    relativePath=f"assets/fig-{_reference_number(label)}.png",
+                    caption=_figure_caption(line["text"]),
+                ),
+            )
+            line["assetId"] = asset.id
             blocks.append(
                 DocumentBlock(
                     id=block_id,
                     sectionId=section_id,
-                    kind=BlockKind.paragraph,
+                    kind=BlockKind.figure,
+                    assetId=asset.id,
+                    anchor=anchor,
+                )
+            )
+        else:
+            block_kind = line.get("kind", BlockKind.paragraph)
+            blocks.append(
+                DocumentBlock(
+                    id=block_id,
+                    sectionId=section_id,
+                    kind=block_kind,
                     text=line["text"],
-                    referenceSpans=_reference_spans(line["text"], assets_by_label),
+                    referenceSpans=[]
+                    if block_kind == BlockKind.reference
+                    else _reference_spans(line["text"], assets_by_label),
                     anchor=anchor,
                 )
             )
@@ -301,6 +327,8 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
     current: dict | None = None
     equation: dict | None = None
     table: dict | None = None
+    figure: dict | None = None
+    inside_references = False
 
     def flush_current() -> None:
         nonlocal current
@@ -320,7 +348,32 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             paragraphs.append(table)
             table = None
 
+    def flush_figure() -> None:
+        nonlocal figure
+        if figure is not None:
+            paragraphs.append(figure)
+            figure = None
+
     for line in lines:
+        if _looks_like_references_heading(line["text"]):
+            flush_current()
+            flush_equation()
+            flush_table()
+            flush_figure()
+            inside_references = True
+            current = dict(line)
+            continue
+
+        if figure is not None:
+            if _should_continue_figure_region(figure, line):
+                figure["text"] = _join_wrapped_text(figure["text"], line["text"])
+                figure["rect"] = _union_rect(figure["rect"], line["rect"])
+                figure["_hasFigureCaption"] = bool(
+                    figure.get("_hasFigureCaption")
+                ) or _looks_like_figure_caption_start(line["text"])
+                continue
+            flush_figure()
+
         if table is not None:
             if _should_continue_table_region(table, line):
                 table["text"] = _join_wrapped_text(table["text"], line["text"])
@@ -334,15 +387,26 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
         if _looks_like_table_start(line["text"]):
             flush_current()
             flush_equation()
+            flush_figure()
             table = dict(line)
             table["kind"] = BlockKind.table
             table["_hasTableContent"] = False
+            continue
+
+        if _looks_like_figure_visual_start(line["text"]):
+            flush_current()
+            flush_equation()
+            flush_table()
+            figure = dict(line)
+            figure["kind"] = BlockKind.figure
+            figure["_hasFigureCaption"] = False
             continue
 
         if _looks_like_equation_line(line["text"]) or (
             equation is not None and _looks_like_equation_continuation(line["text"])
         ):
             flush_current()
+            flush_figure()
             if equation is not None and _should_merge_equation_lines(equation, line):
                 equation["text"] = f'{equation["text"]} {line["text"]}'
                 equation["rect"] = _union_rect(equation["rect"], line["rect"])
@@ -353,6 +417,21 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             continue
 
         flush_equation()
+        if inside_references:
+            if current is not None and current.get("kind") == BlockKind.reference:
+                if _should_continue_reference_entry(current, line):
+                    current["text"] = _join_wrapped_text(current["text"], line["text"])
+                    current["rect"] = _union_rect(current["rect"], line["rect"])
+                    continue
+                paragraphs.append(current)
+                current = None
+
+            if _looks_like_reference_entry_start(line["text"]):
+                flush_current()
+                current = dict(line)
+                current["kind"] = BlockKind.reference
+                continue
+
         if current is None:
             current = dict(line)
             continue
@@ -370,9 +449,15 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
         paragraphs.append(equation)
     if table is not None:
         paragraphs.append(table)
+    if figure is not None:
+        paragraphs.append(figure)
 
     for paragraph in paragraphs:
-        if paragraph.get("kind") not in {BlockKind.equation, BlockKind.table}:
+        if paragraph.get("kind") not in {
+            BlockKind.equation,
+            BlockKind.figure,
+            BlockKind.table,
+        }:
             paragraph["text"] = _normalize_extracted_text(paragraph["text"])
 
     return paragraphs
@@ -432,6 +517,30 @@ def _looks_like_table_start(text: str) -> bool:
     return bool(re.match(r"^Table\s+\d+\s*[:.]", text.strip()))
 
 
+def _looks_like_figure_caption_start(text: str) -> bool:
+    return bool(re.match(r"^Figure\s+\d+\s*[:.]", text.strip()))
+
+
+def _looks_like_figure_visual_start(text: str) -> bool:
+    stripped = text.strip()
+    return stripped.startswith("Input-Input Layer") or (
+        "Attention" in stripped and "Visualization" in stripped
+    )
+
+
+def _should_continue_figure_region(figure: dict, line: dict) -> bool:
+    if figure["page"] != line["page"]:
+        return False
+    if _looks_like_table_start(line["text"]):
+        return False
+    if _looks_like_figure_caption_start(line["text"]):
+        return True
+    if figure.get("_hasFigureCaption"):
+        vertical_gap = line["rect"][1] - figure["rect"][3]
+        return 0 <= vertical_gap <= 24 and not _looks_like_heading(line["text"])
+    return True
+
+
 def _should_continue_table_region(table: dict, line: dict) -> bool:
     if table["page"] != line["page"]:
         return False
@@ -472,6 +581,25 @@ def _looks_like_table_content(text: str) -> bool:
 
 def _looks_like_numbered_section_heading(text: str) -> bool:
     return bool(re.match(r"^\d+(?:\.\d+)+\s*[A-Z]", text.strip()))
+
+
+def _looks_like_references_heading(text: str) -> bool:
+    return text.strip().lower() == "references"
+
+
+def _looks_like_reference_entry_start(text: str) -> bool:
+    return bool(re.match(r"^\[\d+\]\s+", text.strip()))
+
+
+def _should_continue_reference_entry(reference: dict, line: dict) -> bool:
+    if _looks_like_reference_entry_start(line["text"]):
+        return False
+    if _looks_like_figure_visual_start(line["text"]):
+        return False
+    if reference["page"] != line["page"]:
+        return line["rect"][0] >= reference["rect"][0] + 12
+    vertical_gap = line["rect"][1] - reference["rect"][3]
+    return -4 <= vertical_gap <= 28 and line["rect"][0] >= reference["rect"][0] + 8
 
 
 def _looks_like_equation_continuation(text: str) -> bool:
@@ -606,6 +734,18 @@ def _union_rect(left: list[float], right: list[float]) -> list[float]:
 
 def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> list[ReferenceSpan]:
     spans: list[ReferenceSpan] = []
+    for match in CITATION_PATTERN.finditer(text):
+        label = match.group(0)
+        spans.append(
+            ReferenceSpan(
+                start=match.start(),
+                end=match.end(),
+                targetAssetId="",
+                kind=ReferenceKind.citation,
+                label=label,
+            )
+        )
+
     for pattern, reference_kind, asset_kind, prefix in REFERENCE_PATTERNS:
         for match in pattern.finditer(text):
             label = match.group(0)
@@ -668,6 +808,20 @@ def _table_label(text: str, fallback_number: int) -> str:
     return f"Table {fallback_number}"
 
 
+def _figure_label(text: str, fallback_number: int) -> str:
+    match = re.search(r"\bFigure\s+(\d+)\b", text)
+    if match:
+        return f"Figure {match.group(1)}"
+    return f"Figure {fallback_number}"
+
+
+def _figure_caption(text: str) -> str | None:
+    match = re.search(r"\bFigure\s+\d+\s*[:.]\s*(.+)", text)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
 def _write_asset_images(
     pdf_path: Path,
     output_dir: Path,
@@ -723,6 +877,13 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
             max(0, rect.y0 - 12),
             min(page.rect.width, rect.x1 + 18),
             min(page.rect.height, rect.y1 + 12),
+        )
+    if asset.kind == AssetKind.figure and line.get("kind") == BlockKind.figure:
+        return fitz.Rect(
+            max(0, rect.x0 - 18),
+            max(0, rect.y0 - 18),
+            min(page.rect.width, rect.x1 + 18),
+            min(page.rect.height, rect.y1 + 18),
         )
 
     top = max(0, rect.y0 - 280)
