@@ -4,9 +4,11 @@ import fitz
 
 from services.converter.app.conversion import pdf_converter
 from services.converter.app.conversion.pdf_converter import convert_pdf_to_package
-from services.converter.app.models.document_package import AssetKind, BlockKind
+from services.converter.app.models.document_package import AssetKind, BlockKind, ReferenceKind
 from services.converter.app.models.document_package import DocumentAsset
 from services.converter.tests.fixtures import (
+    write_complexity_table_pdf,
+    write_numbered_table_region_pdf,
     write_attention_equation_pdf,
     write_attention_equation_with_following_prose_pdf,
     write_hyphenated_line_pdf,
@@ -190,6 +192,87 @@ def test_keeps_tiny_table_math_fragments_out_of_equation_blocks():
     assert all(
         paragraph.get("kind") != BlockKind.equation for paragraph in paragraphs
     )
+
+
+def test_restores_inline_superscripts_and_subscripts_from_pdf_spans(tmp_path):
+    pdf_path = write_complexity_table_pdf(tmp_path / "complexity.pdf")
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        document_id="doc-1",
+    )
+
+    text = " ".join(block.text or "" for block in package.blocks)
+
+    assert "O(n² · d)" in text
+    assert "O(n · d²)" in text
+    assert "dₖ" in text
+    assert "n2" not in text
+    assert "d2" not in text
+
+
+def test_does_not_link_complexity_notation_as_equation_reference(tmp_path):
+    pdf_path = write_complexity_table_pdf(tmp_path / "complexity.pdf")
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        document_id="doc-1",
+    )
+
+    complexity_blocks = [
+        block
+        for block in package.blocks
+        if block.text and "Self-Attention" in block.text
+    ]
+
+    assert complexity_blocks
+    assert all(
+        span.kind != ReferenceKind.equation
+        for block in complexity_blocks
+        for span in block.referenceSpans
+    )
+
+
+def test_links_equations_only_with_explicit_equation_context():
+    asset = DocumentAsset(
+        id="eq-1",
+        kind=AssetKind.equation,
+        label="(1)",
+        relativePath="assets/eq-1.png",
+    )
+
+    spans = pdf_converter._reference_spans(
+        "Equation (1) defines attention. Complexity is O(1). A citation 19(1) is not math.",
+        {"(1)": asset},
+    )
+
+    assert len(spans) == 1
+    assert spans[0].kind == ReferenceKind.equation
+    assert spans[0].label == "(1)"
+
+
+def test_preserves_numbered_table_regions_as_table_assets(tmp_path):
+    pdf_path = write_numbered_table_region_pdf(tmp_path / "table.pdf")
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        document_id="doc-1",
+    )
+
+    table_blocks = [block for block in package.blocks if block.kind == BlockKind.table]
+    table_assets = [asset for asset in package.assets if asset.kind == AssetKind.table]
+    text = " ".join(block.text or "" for block in package.blocks)
+
+    assert len(table_blocks) == 1
+    assert len(table_assets) == 1
+    assert table_blocks[0].assetId == table_assets[0].id
+    assert (output_dir / table_assets[0].relativePath).is_file()
+    assert "Self-Attention" not in text
+    assert "O(1)" not in text
+    assert "Positional Encoding" in text
 
 
 def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):

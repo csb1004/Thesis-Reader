@@ -27,6 +27,14 @@ REFERENCE_PATTERNS = (
 EQUATION_CLIP_LEFT_PADDING = 32.0
 EQUATION_CLIP_RIGHT_PADDING = 80.0
 EQUATION_CLIP_VERTICAL_PADDING = 8.0
+SUPERSCRIPT_TRANSLATION = str.maketrans(
+    "0123456789+-=()n",
+    "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿ",
+)
+SUBSCRIPT_TRANSLATION = str.maketrans(
+    "0123456789+-=()aehijklmnoprstuvx",
+    "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ",
+)
 
 
 def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -> DocumentPackage:
@@ -67,6 +75,27 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
                     id=block_id,
                     sectionId=section_id,
                     kind=BlockKind.equation,
+                    assetId=asset.id,
+                    anchor=anchor,
+                )
+            )
+        elif line.get("kind") == BlockKind.table:
+            label = _table_label(line["text"], len(assets_by_label) + 1)
+            asset = assets_by_label.setdefault(
+                label,
+                DocumentAsset(
+                    id=f"table-{_reference_number(label)}",
+                    kind=AssetKind.table,
+                    label=label,
+                    relativePath=f"assets/table-{_reference_number(label)}.png",
+                ),
+            )
+            line["assetId"] = asset.id
+            blocks.append(
+                DocumentBlock(
+                    id=block_id,
+                    sectionId=section_id,
+                    kind=BlockKind.table,
                     assetId=asset.id,
                     anchor=anchor,
                 )
@@ -117,8 +146,8 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
             for block in raw_blocks:
                 if block.get("type") != 0:
                     continue
-                for line in block.get("lines", []):
-                    text = "".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                for line in _combine_inline_pdf_lines(block.get("lines", [])):
+                    text = _line_text(line).strip()
                     if not text:
                         continue
                     bbox = line.get("bbox")
@@ -128,10 +157,87 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
     return extracted
 
 
+def _combine_inline_pdf_lines(lines: list[dict]) -> list[dict]:
+    combined: list[dict] = []
+    for line in lines:
+        current = {
+            "bbox": [float(value) for value in line.get("bbox", [0, 0, 0, 0])],
+            "spans": list(line.get("spans", [])),
+        }
+        if combined and _same_visual_line(combined[-1]["bbox"], current["bbox"]):
+            combined[-1]["bbox"] = _union_rect(combined[-1]["bbox"], current["bbox"])
+            combined[-1]["spans"].extend(current["spans"])
+        else:
+            combined.append(current)
+    return combined
+
+
+def _same_visual_line(left: list[float], right: list[float]) -> bool:
+    vertical_overlap = min(left[3], right[3]) - max(left[1], right[1])
+    if vertical_overlap <= 0:
+        return False
+    return vertical_overlap / max(1.0, min(left[3] - left[1], right[3] - right[1])) >= 0.45
+
+
+def _line_text(line: dict) -> str:
+    spans = sorted(
+        line.get("spans", []),
+        key=lambda span: (
+            float(span.get("bbox", [0, 0, 0, 0])[0]),
+            float(span.get("bbox", [0, 0, 0, 0])[1]),
+        ),
+    )
+    if not spans:
+        return ""
+
+    sizes = [float(span.get("size", 0)) for span in spans if span.get("text", "").strip()]
+    main_size = max(sizes) if sizes else 1.0
+    baseline_candidates = [
+        float(span.get("origin", (0, span.get("bbox", [0, 0, 0, 0])[3]))[1])
+        for span in spans
+        if float(span.get("size", main_size)) >= main_size * 0.9
+        and span.get("text", "").strip()
+    ]
+    main_baseline = _median(baseline_candidates) if baseline_candidates else 0.0
+
+    chunks: list[str] = []
+    for span in spans:
+        text = span.get("text", "")
+        if not text:
+            continue
+        size = float(span.get("size", main_size))
+        origin = span.get("origin")
+        baseline = float(origin[1]) if origin else float(span.get("bbox", [0, 0, 0, 0])[3])
+        if size <= main_size * 0.8 and text.strip():
+            if baseline < main_baseline - main_size * 0.2:
+                chunks.append(_translate_script(text, SUPERSCRIPT_TRANSLATION))
+                continue
+            if baseline > main_baseline + main_size * 0.2:
+                chunks.append(_translate_script(text, SUBSCRIPT_TRANSLATION))
+                continue
+        if not (size <= main_size * 0.8 and text.isspace()):
+            chunks.append(text)
+
+    return "".join(chunks)
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[midpoint]
+    return (ordered[midpoint - 1] + ordered[midpoint]) / 2
+
+
+def _translate_script(text: str, translation: dict[int, str]) -> str:
+    return text.translate(translation)
+
+
 def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
     paragraphs: list[dict] = []
     current: dict | None = None
     equation: dict | None = None
+    table: dict | None = None
 
     def flush_current() -> None:
         nonlocal current
@@ -145,7 +251,27 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             paragraphs.append(equation)
             equation = None
 
+    def flush_table() -> None:
+        nonlocal table
+        if table is not None:
+            paragraphs.append(table)
+            table = None
+
     for line in lines:
+        if table is not None:
+            if _should_continue_table_region(table, line):
+                table["text"] = _join_wrapped_text(table["text"], line["text"])
+                table["rect"] = _union_rect(table["rect"], line["rect"])
+                continue
+            flush_table()
+
+        if _looks_like_table_start(line["text"]):
+            flush_current()
+            flush_equation()
+            table = dict(line)
+            table["kind"] = BlockKind.table
+            continue
+
         if _looks_like_equation_line(line["text"]) or (
             equation is not None and _looks_like_equation_continuation(line["text"])
         ):
@@ -175,9 +301,11 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
         paragraphs.append(current)
     if equation is not None:
         paragraphs.append(equation)
+    if table is not None:
+        paragraphs.append(table)
 
     for paragraph in paragraphs:
-        if paragraph.get("kind") != BlockKind.equation:
+        if paragraph.get("kind") not in {BlockKind.equation, BlockKind.table}:
             paragraph["text"] = _normalize_extracted_text(paragraph["text"])
 
     return paragraphs
@@ -231,6 +359,24 @@ def _looks_like_inline_math_sentence(text: str) -> bool:
         }
         for word in words
     )
+
+
+def _looks_like_table_start(text: str) -> bool:
+    return bool(re.match(r"^Table\s+\d+\s*:", text.strip()))
+
+
+def _should_continue_table_region(table: dict, line: dict) -> bool:
+    if table["page"] != line["page"]:
+        return False
+    if _looks_like_numbered_section_heading(line["text"]):
+        return False
+
+    vertical_gap = line["rect"][1] - table["rect"][3]
+    return -4 <= vertical_gap <= 36
+
+
+def _looks_like_numbered_section_heading(text: str) -> bool:
+    return bool(re.match(r"^\d+(?:\.\d+)+\s*[A-Z]", text.strip()))
 
 
 def _looks_like_equation_continuation(text: str) -> bool:
@@ -368,15 +514,24 @@ def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> li
     for pattern, reference_kind, asset_kind, prefix in REFERENCE_PATTERNS:
         for match in pattern.finditer(text):
             label = match.group(0)
-            asset = assets_by_label.setdefault(
-                label,
-                DocumentAsset(
-                    id=f"{prefix}-{_reference_number(label)}",
-                    kind=asset_kind,
-                    label=label,
-                    relativePath=f"assets/{prefix}-{_reference_number(label)}.png",
-                ),
-            )
+            if reference_kind == ReferenceKind.equation:
+                if _is_complexity_notation_reference(text, match.start()):
+                    continue
+                if not _has_explicit_equation_reference_context(text, match.start()):
+                    continue
+                asset = assets_by_label.get(label)
+                if asset is None:
+                    continue
+            else:
+                asset = assets_by_label.setdefault(
+                    label,
+                    DocumentAsset(
+                        id=f"{prefix}-{_reference_number(label)}",
+                        kind=asset_kind,
+                        label=label,
+                        relativePath=f"assets/{prefix}-{_reference_number(label)}.png",
+                    ),
+                )
             spans.append(
                 ReferenceSpan(
                     start=match.start(),
@@ -389,6 +544,16 @@ def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> li
     return sorted(spans, key=lambda span: span.start)
 
 
+def _is_complexity_notation_reference(text: str, start: int) -> bool:
+    prefix = text[max(0, start - 1) : start]
+    return prefix in {"O", "o"}
+
+
+def _has_explicit_equation_reference_context(text: str, start: int) -> bool:
+    context = text[max(0, start - 18) : start].lower()
+    return bool(re.search(r"\b(?:equation|eq\.?|formula)\s*$", context))
+
+
 def _reference_number(label: str) -> str:
     match = re.search(r"\d+", label)
     return match.group(0) if match else "unknown"
@@ -399,6 +564,13 @@ def _equation_label(text: str, fallback_number: int) -> str:
     if match:
         return f"({match.group(1)})"
     return f"Equation {fallback_number}"
+
+
+def _table_label(text: str, fallback_number: int) -> str:
+    match = re.search(r"\bTable\s+(\d+)\b", text)
+    if match:
+        return f"Table {match.group(1)}"
+    return f"Table {fallback_number}"
 
 
 def _write_asset_images(
@@ -448,6 +620,13 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
             max(0, rect.y0 - EQUATION_CLIP_VERTICAL_PADDING),
             min(page.rect.width, rect.x1 + EQUATION_CLIP_RIGHT_PADDING),
             min(page.rect.height, rect.y1 + EQUATION_CLIP_VERTICAL_PADDING),
+        )
+    if asset.kind == AssetKind.table:
+        return fitz.Rect(
+            max(0, rect.x0 - 18),
+            max(0, rect.y0 - 12),
+            min(page.rect.width, rect.x1 + 18),
+            min(page.rect.height, rect.y1 + 12),
         )
 
     top = max(0, rect.y0 - 280)

@@ -89,3 +89,62 @@ def write_unlabeled_equation_pdf(path: Path) -> Path:
     c.drawString(72, 648, "Where the projections are parameter matrices.")
     c.save()
     return path
+
+
+def write_complexity_table_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Complexity Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(
+        72,
+        720,
+        "Layer Type Complexity per Layer Sequential Operations Maximum Path Length",
+    )
+
+    x = 72
+    y = 700
+    c.drawString(x, y, "Self-Attention O(n")
+    c.setFont("Helvetica", 7)
+    c.drawString(x + 94, y + 5, "2")
+    c.setFont("Helvetica", 11)
+    c.drawString(x + 99, y, " · d) O(1) O(1)")
+
+    y = 684
+    c.drawString(x, y, "Recurrent O(n · d")
+    c.setFont("Helvetica", 7)
+    c.drawString(x + 88, y + 5, "2")
+    c.setFont("Helvetica", 11)
+    c.drawString(x + 93, y, ") O(n) O(n)")
+
+    y = 668
+    c.drawString(x, y, "Embedding dimension d")
+    c.setFont("Helvetica", 7)
+    c.drawString(x + 104, y - 3, "k")
+    c.setFont("Helvetica", 11)
+    c.drawString(x + 108, y, " is used for keys.")
+    c.save()
+    return path
+
+
+def write_numbered_table_region_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Table Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(
+        72,
+        720,
+        "Table 1: Maximum path lengths, per-layer complexity and minimum number of sequential operations",
+    )
+    c.drawString(72, 704, "for different layer types.")
+    c.drawString(90, 680, "Layer Type    Complexity per Layer    Sequential Operations")
+    c.drawString(90, 664, "Self-Attention    O(n")
+    c.setFont("Helvetica", 7)
+    c.drawString(190, 669, "2")
+    c.setFont("Helvetica", 11)
+    c.drawString(195, 664, " · d)    O(1)")
+    c.drawString(72, 620, "3.5 Positional Encoding")
+    c.drawString(72, 596, "Since our model contains no recurrence and no convolution.")
+    c.save()
+    return path

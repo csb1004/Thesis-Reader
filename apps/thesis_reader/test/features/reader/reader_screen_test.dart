@@ -418,6 +418,19 @@ void main() {
     );
   });
 
+  testWidgets('renders table asset blocks inline', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithTableAsset('/tmp/table.png'),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('reader-inline-asset-table-1')), findsOneWidget);
+  });
+
   testWidgets('opens referenced asset in fullscreen mode', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -592,6 +605,37 @@ DocumentPackage _packageWithEquationAsset(String equationPath) {
         kind: AssetKind.equation,
         label: 'Equation 1',
         relativePath: equationPath,
+      ),
+    ],
+  );
+}
+
+DocumentPackage _packageWithTableAsset(String tablePath) {
+  return DocumentPackage(
+    packageVersion: 1,
+    documentId: 'doc-1',
+    metadata: const DocumentMetadata(
+      title: 'Reader Test',
+      sourceFilename: 'reader.pdf',
+      originalPdfSha256: 'abc123',
+    ),
+    sections: const [
+      DocumentSection(id: 's1', title: 'Body', blockIds: ['table-block']),
+    ],
+    blocks: const [
+      DocumentBlock(
+        id: 'table-block',
+        sectionId: 's1',
+        kind: BlockKind.table,
+        assetId: 'table-1',
+      ),
+    ],
+    assets: [
+      DocumentAsset(
+        id: 'table-1',
+        kind: AssetKind.table,
+        label: 'Table 1',
+        relativePath: tablePath,
       ),
     ],
   );

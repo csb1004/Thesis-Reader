@@ -1096,7 +1096,12 @@ final class _ReaderBlock extends StatelessWidget {
     }
 
     final asset = block.assetId == null ? null : assetsById[block.assetId];
-    if (asset != null && block.kind == BlockKind.equation) {
+    if (asset != null &&
+        {
+          BlockKind.equation,
+          BlockKind.figure,
+          BlockKind.table,
+        }.contains(block.kind)) {
       return Padding(
         key: Key('reader-inline-asset-${asset.id}'),
         padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
@@ -1142,7 +1147,7 @@ final class _InlineAssetPreview extends StatelessWidget {
 
     if (isImage && file.existsSync()) {
       return ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 180),
+        constraints: BoxConstraints(maxHeight: _inlineAssetMaxHeight(asset.kind)),
         child: Image.file(
           file,
           fit: BoxFit.contain,
@@ -1156,6 +1161,15 @@ final class _InlineAssetPreview extends StatelessWidget {
 
     return _InlineAssetFallback(asset: asset, readerTheme: readerTheme);
   }
+}
+
+double _inlineAssetMaxHeight(AssetKind kind) {
+  return switch (kind) {
+    AssetKind.table => 260,
+    AssetKind.figure => 240,
+    AssetKind.equation => 180,
+    AssetKind.pageRegion || AssetKind.thumbnail => 220,
+  };
 }
 
 final class _InlineAssetFallback extends StatelessWidget {
