@@ -184,7 +184,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(progressChanges.last.pageIndex, greaterThan(0));
-    expect(find.textContaining('/'), findsNothing);
+    expect(find.textContaining(RegExp(r'\d+ / \d+')), findsOneWidget);
   });
 
   testWidgets('reports scroll progress after scroll end', (tester) async {
@@ -402,6 +402,22 @@ void main() {
     expect(find.text('assets/figures/figure-1.png'), findsOneWidget);
   });
 
+  testWidgets('renders equation asset blocks inline', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithEquationAsset('/tmp/equation.png'),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('reader-inline-asset-equation-1')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('opens referenced asset in fullscreen mode', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -547,6 +563,37 @@ DocumentPackage _packageWithBlocks(List<String> texts) {
         ),
     ],
     assets: const [],
+  );
+}
+
+DocumentPackage _packageWithEquationAsset(String equationPath) {
+  return DocumentPackage(
+    packageVersion: 1,
+    documentId: 'doc-1',
+    metadata: const DocumentMetadata(
+      title: 'Reader Test',
+      sourceFilename: 'reader.pdf',
+      originalPdfSha256: 'abc123',
+    ),
+    sections: const [
+      DocumentSection(id: 's1', title: 'Body', blockIds: ['eq-block']),
+    ],
+    blocks: const [
+      DocumentBlock(
+        id: 'eq-block',
+        sectionId: 's1',
+        kind: BlockKind.equation,
+        assetId: 'equation-1',
+      ),
+    ],
+    assets: [
+      DocumentAsset(
+        id: 'equation-1',
+        kind: AssetKind.equation,
+        label: 'Equation 1',
+        relativePath: equationPath,
+      ),
+    ],
   );
 }
 

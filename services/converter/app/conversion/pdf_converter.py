@@ -47,16 +47,37 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
             originalPdfRect=line["rect"],
         )
         anchors.append(anchor)
-        blocks.append(
-            DocumentBlock(
-                id=block_id,
-                sectionId=section_id,
-                kind=BlockKind.paragraph,
-                text=line["text"],
-                referenceSpans=_reference_spans(line["text"], assets_by_label),
-                anchor=anchor,
+        if line.get("kind") == BlockKind.equation:
+            label = _equation_label(line["text"], len(assets_by_label) + 1)
+            asset = assets_by_label.setdefault(
+                label,
+                DocumentAsset(
+                    id=f"eq-{_reference_number(label)}",
+                    kind=AssetKind.equation,
+                    label=label,
+                    relativePath=f"assets/eq-{_reference_number(label)}.png",
+                ),
             )
-        )
+            blocks.append(
+                DocumentBlock(
+                    id=block_id,
+                    sectionId=section_id,
+                    kind=BlockKind.equation,
+                    assetId=asset.id,
+                    anchor=anchor,
+                )
+            )
+        else:
+            blocks.append(
+                DocumentBlock(
+                    id=block_id,
+                    sectionId=section_id,
+                    kind=BlockKind.paragraph,
+                    text=line["text"],
+                    referenceSpans=_reference_spans(line["text"], assets_by_label),
+                    anchor=anchor,
+                )
+            )
 
     package = DocumentPackage(
         packageVersion=1,
@@ -88,24 +109,53 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
     extracted: list[dict] = []
     with fitz.open(pdf_path) as document:
         for page_index, page in enumerate(document, start=1):
-            raw_blocks = page.get_text("blocks")
-            text_blocks = [block for block in raw_blocks if len(block) >= 5 and block[4].strip()]
-            for block in sorted(text_blocks, key=lambda item: (item[1], item[0])):
-                rect = [float(block[0]), float(block[1]), float(block[2]), float(block[3])]
-                for text in _split_lines(block[4]):
+            raw_blocks = page.get_text("dict").get("blocks", [])
+            for block in raw_blocks:
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    text = "".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                    if not text:
+                        continue
+                    bbox = line.get("bbox")
+                    rect = [float(bbox[index]) for index in range(4)]
                     extracted.append({"text": text, "page": page_index, "rect": rect})
+    extracted.sort(key=lambda item: (item["page"], item["rect"][1], item["rect"][0]))
     return extracted
-
-
-def _split_lines(text: str) -> list[str]:
-    return [line.strip() for line in text.splitlines() if line.strip()]
 
 
 def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
     paragraphs: list[dict] = []
     current: dict | None = None
+    equation: dict | None = None
+
+    def flush_current() -> None:
+        nonlocal current
+        if current is not None:
+            paragraphs.append(current)
+            current = None
+
+    def flush_equation() -> None:
+        nonlocal equation
+        if equation is not None:
+            paragraphs.append(equation)
+            equation = None
 
     for line in lines:
+        if _looks_like_equation_line(line["text"]) or (
+            equation is not None and _looks_like_equation_continuation(line["text"])
+        ):
+            flush_current()
+            if equation is not None and _should_merge_lines(equation, line):
+                equation["text"] = f'{equation["text"]} {line["text"]}'
+                equation["rect"] = _union_rect(equation["rect"], line["rect"])
+            else:
+                flush_equation()
+                equation = dict(line)
+                equation["kind"] = BlockKind.equation
+            continue
+
+        flush_equation()
         if current is None:
             current = dict(line)
             continue
@@ -119,11 +169,44 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
 
     if current is not None:
         paragraphs.append(current)
+    if equation is not None:
+        paragraphs.append(equation)
 
     for paragraph in paragraphs:
-        paragraph["text"] = _normalize_extracted_text(paragraph["text"])
+        if paragraph.get("kind") != BlockKind.equation:
+            paragraph["text"] = _normalize_extracted_text(paragraph["text"])
 
     return paragraphs
+
+
+def _looks_like_equation_line(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if re.fullmatch(r"\(\d+\)", stripped):
+        return False
+    word_count = len(stripped.split())
+    if "=" in stripped and word_count <= 14:
+        return True
+    if re.search(r"[∈∑√≤≥×^_]|[A-Z]\s*[=∈]", stripped) and word_count <= 10:
+        return True
+    return bool(
+        re.search(r"\b(?:Attention|softmax|MultiHead|Concat|head\w*)\b", stripped)
+        and "=" in stripped
+    )
+
+
+def _looks_like_equation_continuation(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if re.fullmatch(r"\(\d+\)", stripped):
+        return True
+    if len(stripped.split()) > 14:
+        return False
+    if stripped.endswith((".", ":", ";")):
+        return False
+    return bool(re.search(r"[=∈∑√≤≥×^_()]|[A-Z]\s*[A-Z]", stripped))
 
 
 def _should_merge_lines(previous: dict, current: dict) -> bool:
@@ -222,6 +305,13 @@ def _reference_number(label: str) -> str:
     return match.group(0) if match else "unknown"
 
 
+def _equation_label(text: str, fallback_number: int) -> str:
+    match = re.search(r"\(\s*(\d+)\s*\)", text)
+    if match:
+        return f"({match.group(1)})"
+    return f"Equation {fallback_number}"
+
+
 def _write_asset_images(
     pdf_path: Path,
     output_dir: Path,
@@ -244,7 +334,7 @@ def _write_asset_images(
             match = _line_for_asset(asset, lines)
             page_index = max(0, (match["page"] if match else 1) - 1)
             page = document[page_index]
-            clip = _asset_clip(page, match)
+            clip = _asset_clip(page, match, asset)
             pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
             pixmap.save(target)
 
@@ -256,11 +346,19 @@ def _line_for_asset(asset: DocumentAsset, lines: list[dict]) -> dict | None:
     return None
 
 
-def _asset_clip(page: fitz.Page, line: dict | None) -> fitz.Rect:
+def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fitz.Rect:
     if line is None:
         return page.rect
 
     rect = fitz.Rect(line["rect"])
+    if asset.kind == AssetKind.equation:
+        return fitz.Rect(
+            max(0, rect.x0 - 12),
+            max(0, rect.y0 - 8),
+            min(page.rect.width, rect.x1 + 12),
+            min(page.rect.height, rect.y1 + 8),
+        )
+
     top = max(0, rect.y0 - 280)
     bottom = min(page.rect.height, rect.y1 + 80)
     if bottom - top < 120:

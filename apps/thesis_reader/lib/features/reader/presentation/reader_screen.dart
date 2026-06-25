@@ -879,13 +879,24 @@ final class _ReaderPageSlider extends StatelessWidget {
           elevation: 8,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Slider(
-              key: const Key('reader-page-slider'),
-              value: pageIndex.clamp(0, maxPage).toDouble(),
-              min: 0,
-              max: maxPage.toDouble(),
-              divisions: maxPage == 0 ? null : maxPage,
-              onChanged: pageCount <= 1 ? null : onChanged,
+            child: Row(
+              children: [
+                Text(
+                  '${pageIndex + 1} / ${math.max(pageCount, 1)}',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Slider(
+                    key: const Key('reader-page-slider'),
+                    value: pageIndex.clamp(0, maxPage).toDouble(),
+                    min: 0,
+                    max: maxPage.toDouble(),
+                    divisions: maxPage == 0 ? null : maxPage,
+                    onChanged: pageCount <= 1 ? null : onChanged,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1084,6 +1095,19 @@ final class _ReaderBlock extends StatelessWidget {
       );
     }
 
+    final asset = block.assetId == null ? null : assetsById[block.assetId];
+    if (asset != null && block.kind == BlockKind.equation) {
+      return Padding(
+        key: Key('reader-inline-asset-${asset.id}'),
+        padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onAssetPressed(asset),
+          child: _InlineAssetPreview(asset: asset, readerTheme: readerTheme),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: ListTile(
@@ -1095,6 +1119,58 @@ final class _ReaderBlock extends StatelessWidget {
           block.assetId ?? block.kind.name,
           style: TextStyle(color: readerTheme.textColor),
         ),
+      ),
+    );
+  }
+}
+
+final class _InlineAssetPreview extends StatelessWidget {
+  const _InlineAssetPreview({required this.asset, required this.readerTheme});
+
+  final DocumentAsset asset;
+  final ReaderThemeData readerTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(asset.relativePath);
+    final isImage = {
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.webp',
+    }.contains(_fileExtension(asset.relativePath));
+
+    if (isImage && file.existsSync()) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 180),
+        child: Image.file(
+          file,
+          fit: BoxFit.contain,
+          alignment: Alignment.centerLeft,
+          errorBuilder: (context, error, stackTrace) {
+            return _InlineAssetFallback(asset: asset, readerTheme: readerTheme);
+          },
+        ),
+      );
+    }
+
+    return _InlineAssetFallback(asset: asset, readerTheme: readerTheme);
+  }
+}
+
+final class _InlineAssetFallback extends StatelessWidget {
+  const _InlineAssetFallback({required this.asset, required this.readerTheme});
+
+  final DocumentAsset asset;
+  final ReaderThemeData readerTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      asset.label,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: readerTheme.textColor.withValues(alpha: 0.72),
+        fontStyle: FontStyle.italic,
       ),
     );
   }
