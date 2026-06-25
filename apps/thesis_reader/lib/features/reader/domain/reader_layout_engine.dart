@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:document_contract/document_contract.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 
-const _pageBottomGuardLines = 2;
+const _pageBottomGuardLines = 1;
 const _headingFollowerReserveLines = 3;
 
 final class ReaderViewport {
@@ -250,7 +250,7 @@ final class _ReaderMetrics {
           viewport.bottomReserve -
           footerReserve,
     );
-    final averageCharWidth = fontSize * 0.55;
+    final averageCharWidth = fontSize * 0.46;
 
     final rawLinesPerPage = (contentHeight / effectiveLineHeight).floor();
 

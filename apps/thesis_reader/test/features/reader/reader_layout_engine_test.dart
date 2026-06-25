@@ -316,4 +316,45 @@ void main() {
       isTrue,
     );
   });
+
+  test('keeps continuing text on the current page when there is room', () {
+    final package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: const DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: const [
+        DocumentSection(id: 's1', title: 'Body', blockIds: ['body']),
+      ],
+      blocks: const [
+        DocumentBlock.paragraph(
+          id: 'body',
+          sectionId: 's1',
+          text:
+              'performance in case of the latter. The fundamental constraint '
+              'of sequential computation, however, remains. Attention '
+              'mechanisms have become an integral part of compelling sequence '
+              'modeling and transduc- tion models in various tasks, allowing '
+              'modeling of dependencies without regard to their distance.',
+        ),
+      ],
+      assets: const [],
+    );
+
+    final layout = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.6, lineHeight: 1.5),
+      const ReaderViewport(
+        width: 360,
+        height: 640,
+        topReserve: 88,
+        bottomReserve: 12,
+      ),
+    );
+
+    expect(layout.pages.first.items.single.text, contains('tion models'));
+  });
 }
