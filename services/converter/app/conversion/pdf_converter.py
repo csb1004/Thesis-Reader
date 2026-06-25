@@ -264,6 +264,9 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             if _should_continue_table_region(table, line):
                 table["text"] = _join_wrapped_text(table["text"], line["text"])
                 table["rect"] = _union_rect(table["rect"], line["rect"])
+                table["_hasTableContent"] = bool(
+                    table.get("_hasTableContent")
+                ) or _looks_like_table_content(line["text"])
                 continue
             flush_table()
 
@@ -272,6 +275,7 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             flush_equation()
             table = dict(line)
             table["kind"] = BlockKind.table
+            table["_hasTableContent"] = False
             continue
 
         if _looks_like_equation_line(line["text"]) or (
@@ -374,7 +378,9 @@ def _should_continue_table_region(table: dict, line: dict) -> bool:
         return False
 
     vertical_gap = line["rect"][1] - table["rect"][3]
-    if -4 <= vertical_gap <= TABLE_REGION_CLOSE_GAP:
+    if -8 <= vertical_gap <= TABLE_REGION_CLOSE_GAP:
+        if table.get("_hasTableContent"):
+            return _looks_like_table_content(line["text"])
         return True
     return (
         0 <= vertical_gap <= TABLE_REGION_CONTENT_GAP
@@ -386,6 +392,11 @@ def _looks_like_table_content(text: str) -> bool:
     stripped = text.strip()
     if not stripped or _looks_like_numbered_section_heading(stripped):
         return False
+    prose_words = re.findall(r"[A-Za-z]{2,}", stripped)
+    if len(prose_words) >= 8:
+        return False
+    if stripped in {"Model", "BLEU", "Training Cost (FLOPs)"}:
+        return True
     if any(
         marker in stripped
         for marker in ("BLEU", "FLOP", "EN-DE", "EN-FR", "Training Cost")

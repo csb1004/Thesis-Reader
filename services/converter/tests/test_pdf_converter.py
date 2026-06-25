@@ -299,6 +299,110 @@ def test_preserves_table_rows_after_caption_gap_as_table_asset(tmp_path):
     assert "Transformer (big) outperforms previous ensembles." in text
 
 
+def test_table_region_keeps_overlapping_header_rows_without_swallowing_prose():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "Table 2: The Transformer achieves better BLEU scores than previous state-of-the-art models on the",
+                "page": 8,
+                "rect": [107.7, 69.5, 504.0, 81.6],
+            },
+            {
+                "text": "English-to-German and English-to-French newstest2014 tests at a fraction of the training cost.",
+                "page": 8,
+                "rect": [108.0, 80.5, 483.5, 92.5],
+            },
+            {
+                "text": "BLEUTraining Cost (FLOPs)",
+                "page": 8,
+                "rect": [311.0, 96.3, 475.3, 108.3],
+            },
+            {
+                "text": "Model",
+                "page": 8,
+                "rect": [136.7, 104.6, 162.7, 116.6],
+            },
+            {
+                "text": "EN-DEEN-FREN-DEEN-FR",
+                "page": 8,
+                "rect": [288.7, 112.2, 468.8, 124.2],
+            },
+            {
+                "text": "ByteNet [18]23.75",
+                "page": 8,
+                "rect": [136.7, 123.5, 314.9, 135.5],
+            },
+            {
+                "text": "Deep-Att + PosUnk [39]39.21.0 · 10²⁰",
+                "page": 8,
+                "rect": [136.7, 134.9, 473.1, 153.6],
+            },
+            {
+                "text": "GNMT + RL [38]24.639.922.3 · 10¹⁹1.4 · 10²⁰",
+                "page": 8,
+                "rect": [136.7, 146.3, 473.1, 165.0],
+            },
+            {
+                "text": "ConvS2S [9]25.1640.469.6 · 10¹⁸1.5 · 10²⁰",
+                "page": 8,
+                "rect": [136.7, 157.6, 473.1, 176.4],
+            },
+            {
+                "text": "MoE [32]26.0340.562.0 · 10¹⁹1.2 · 10²⁰",
+                "page": 8,
+                "rect": [136.7, 169.0, 473.1, 187.8],
+            },
+            {
+                "text": "Deep-Att + PosUnk Ensemble [39]40.48.0 · 10²⁰",
+                "page": 8,
+                "rect": [136.7, 181.7, 473.1, 200.4],
+            },
+            {
+                "text": "GNMT + RL Ensemble [38]26.3041.161.8 · 10²⁰1.1 · 10²¹",
+                "page": 8,
+                "rect": [136.7, 193.0, 473.1, 211.8],
+            },
+            {
+                "text": "ConvS2S Ensemble [9]26.3641.297.7 · 10¹⁹1.2 · 10²¹",
+                "page": 8,
+                "rect": [136.7, 204.1, 473.1, 223.2],
+            },
+            {
+                "text": "Transformer (base model)27.338.13.3 · 10¹⁸",
+                "page": 8,
+                "rect": [136.7, 217.6, 450.7, 236.1],
+            },
+            {
+                "text": "Transformer (big)28.441.82.3 · 10¹⁹",
+                "page": 8,
+                "rect": [136.7, 228.6, 448.0, 247.7],
+            },
+            {
+                "text": "Residual DropoutWe apply dropout [33] to the output of each sub-layer.",
+                "page": 8,
+                "rect": [108.0, 271.3, 504.0, 284.3],
+            },
+        ]
+    )
+
+    table_regions = [
+        paragraph for paragraph in paragraphs if paragraph.get("kind") == BlockKind.table
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.table
+    )
+
+    assert len(table_regions) == 1
+    assert "ByteNet" in table_regions[0]["text"]
+    assert "EN-DEEN-FR" in table_regions[0]["text"]
+    assert "Residual Dropout" not in table_regions[0]["text"]
+    assert "ByteNet" not in plain_text
+    assert "EN-DEEN-FR" not in plain_text
+    assert "Residual DropoutWe apply dropout" in plain_text
+
+
 def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):
     pdf_path = write_unlabeled_equation_pdf(tmp_path / "equation.pdf")
     output_dir = tmp_path / "out"
