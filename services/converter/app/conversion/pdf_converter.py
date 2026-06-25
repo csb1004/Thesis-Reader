@@ -24,6 +24,9 @@ REFERENCE_PATTERNS = (
     (re.compile(r"\bTable\s+\d+\b"), ReferenceKind.table, AssetKind.table, "table"),
     (re.compile(r"\(\d+\)"), ReferenceKind.equation, AssetKind.equation, "eq"),
 )
+EQUATION_CLIP_LEFT_PADDING = 32.0
+EQUATION_CLIP_RIGHT_PADDING = 56.0
+EQUATION_CLIP_VERTICAL_PADDING = 24.0
 
 
 def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -> DocumentPackage:
@@ -356,10 +359,10 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
     rect = fitz.Rect(line["rect"])
     if asset.kind == AssetKind.equation:
         return fitz.Rect(
-            max(0, rect.x0 - 12),
-            max(0, rect.y0 - 8),
-            min(page.rect.width, rect.x1 + 12),
-            min(page.rect.height, rect.y1 + 8),
+            max(0, rect.x0 - EQUATION_CLIP_LEFT_PADDING),
+            max(0, rect.y0 - EQUATION_CLIP_VERTICAL_PADDING),
+            min(page.rect.width, rect.x1 + EQUATION_CLIP_RIGHT_PADDING),
+            min(page.rect.height, rect.y1 + EQUATION_CLIP_VERTICAL_PADDING),
         )
 
     top = max(0, rect.y0 - 280)

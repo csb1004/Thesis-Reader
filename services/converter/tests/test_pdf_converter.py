@@ -1,5 +1,11 @@
+from types import SimpleNamespace
+
+import fitz
+
+from services.converter.app.conversion import pdf_converter
 from services.converter.app.conversion.pdf_converter import convert_pdf_to_package
 from services.converter.app.models.document_package import AssetKind, BlockKind
+from services.converter.app.models.document_package import DocumentAsset
 from services.converter.tests.fixtures import (
     write_attention_equation_pdf,
     write_hyphenated_line_pdf,
@@ -102,6 +108,24 @@ def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):
 
     assert width < 900
     assert height < 220
+
+
+def test_equation_clip_keeps_extra_padding_for_math_overhang():
+    page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
+    line = {"rect": [72, 100, 320, 130]}
+    asset = DocumentAsset(
+        id="eq-1",
+        kind=AssetKind.equation,
+        label="Equation 1",
+        relativePath="assets/eq-1.png",
+    )
+
+    clip = pdf_converter._asset_clip(page, line, asset)
+
+    assert clip.x0 <= 40
+    assert clip.y0 <= 76
+    assert clip.x1 >= 368
+    assert clip.y1 >= 154
 
 
 def _png_dimensions(path):
