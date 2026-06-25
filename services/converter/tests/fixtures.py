@@ -180,3 +180,22 @@ def write_bleu_table_with_caption_gap_pdf(path: Path) -> Path:
     c.drawString(72, 516, "Transformer (big) outperforms previous ensembles.")
     c.save()
     return path
+
+
+def write_bottom_footer_noise_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Footer Noise Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(72, 720, "To evaluate the importance of different components,")
+    c.drawString(72, 704, "we varied our base model in different ways.")
+    c.setFont("Helvetica", 8)
+    c.drawString(
+        72,
+        72,
+        "⁵We used values of 2.8, 3.7, 6.0 and 9.5 TFLOPS for K80, K40, M40 and P100.",
+    )
+    c.setFont("Helvetica", 10)
+    c.drawCentredString(306, 36, "8")
+    c.save()
+    return path

@@ -29,6 +29,27 @@ EQUATION_CLIP_RIGHT_PADDING = 80.0
 EQUATION_CLIP_VERTICAL_PADDING = 8.0
 TABLE_REGION_CLOSE_GAP = 36.0
 TABLE_REGION_CONTENT_GAP = 72.0
+TABLE_REGION_OVERLAP_TOLERANCE = -24.0
+PAGE_NUMBER_BOTTOM_RATIO = 0.88
+FOOTNOTE_BOTTOM_RATIO = 0.84
+FOOTNOTE_SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+TABLE_CONTENT_MARKERS = (
+    "bleu",
+    "dev",
+    "dff",
+    "dk",
+    "dmodel",
+    "dv",
+    "en-de",
+    "en-fr",
+    "flop",
+    "params",
+    "pdrop",
+    "ppl",
+    "steps",
+    "training cost",
+    "×10",
+)
 SUPERSCRIPT_TRANSLATION = str.maketrans(
     "0123456789+-=()n",
     "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿ",
@@ -154,9 +175,49 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
                         continue
                     bbox = line.get("bbox")
                     rect = [float(bbox[index]) for index in range(4)]
+                    if _should_skip_extracted_line(
+                        text,
+                        rect,
+                        page.rect,
+                        _line_font_size(line),
+                    ):
+                        continue
                     extracted.append({"text": text, "page": page_index, "rect": rect})
     extracted.sort(key=lambda item: (item["page"], item["rect"][1], item["rect"][0]))
     return extracted
+
+
+def _line_font_size(line: dict) -> float:
+    sizes = [
+        float(span.get("size", 0))
+        for span in line.get("spans", [])
+        if span.get("text", "").strip()
+    ]
+    return max(sizes) if sizes else 0.0
+
+
+def _should_skip_extracted_line(
+    text: str,
+    rect: list[float],
+    page_rect: fitz.Rect,
+    font_size: float,
+) -> bool:
+    stripped = text.strip()
+    if re.fullmatch(r"\d+", stripped):
+        center_x = (rect[0] + rect[2]) / 2
+        page_center_x = page_rect.width / 2
+        if (
+            rect[1] >= page_rect.height * PAGE_NUMBER_BOTTOM_RATIO
+            and abs(center_x - page_center_x) <= 32
+        ):
+            return True
+
+    if rect[1] >= page_rect.height * FOOTNOTE_BOTTOM_RATIO and (
+        font_size <= 8.5 or stripped[:1] in FOOTNOTE_SUPERSCRIPT_DIGITS
+    ):
+        return True
+
+    return False
 
 
 def _combine_inline_pdf_lines(lines: list[dict]) -> list[dict]:
@@ -378,7 +439,7 @@ def _should_continue_table_region(table: dict, line: dict) -> bool:
         return False
 
     vertical_gap = line["rect"][1] - table["rect"][3]
-    if -8 <= vertical_gap <= TABLE_REGION_CLOSE_GAP:
+    if TABLE_REGION_OVERLAP_TOLERANCE <= vertical_gap <= TABLE_REGION_CLOSE_GAP:
         if table.get("_hasTableContent"):
             return _looks_like_table_content(line["text"])
         return True
@@ -397,10 +458,10 @@ def _looks_like_table_content(text: str) -> bool:
         return False
     if stripped in {"Model", "BLEU", "Training Cost (FLOPs)"}:
         return True
-    if any(
-        marker in stripped
-        for marker in ("BLEU", "FLOP", "EN-DE", "EN-FR", "Training Cost")
-    ):
+    if re.fullmatch(r"\([A-Z]\)", stripped):
+        return True
+    lowered = stripped.lower()
+    if any(marker in lowered for marker in TABLE_CONTENT_MARKERS):
         return True
     if re.search(r"\[[0-9]+\]", stripped) and re.search(r"\d", stripped):
         return True
@@ -638,6 +699,7 @@ def _line_for_asset(asset: DocumentAsset, lines: list[dict]) -> dict | None:
     for line in lines:
         if line.get("assetId") == asset.id:
             return line
+    for line in lines:
         if asset.label in line["text"]:
             return line
     return None

@@ -8,6 +8,7 @@ from services.converter.app.models.document_package import AssetKind, BlockKind,
 from services.converter.app.models.document_package import DocumentAsset
 from services.converter.tests.fixtures import (
     write_bleu_table_with_caption_gap_pdf,
+    write_bottom_footer_noise_pdf,
     write_complexity_table_pdf,
     write_numbered_table_region_pdf,
     write_attention_equation_pdf,
@@ -403,6 +404,207 @@ def test_table_region_keeps_overlapping_header_rows_without_swallowing_prose():
     assert "Residual DropoutWe apply dropout" in plain_text
 
 
+def test_table_region_keeps_compressed_architecture_rows_out_of_text():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "Table 3: Variations on the Transformer architecture. Unlisted values are identical to those of the base",
+                "page": 9,
+                "rect": [107.7, 69.5, 504.0, 81.6],
+            },
+            {
+                "text": "model. All metrics are on the English-to-German translation development set, newstest2013. Listed",
+                "page": 9,
+                "rect": [108.0, 80.5, 504.0, 92.5],
+            },
+            {
+                "text": "perplexities are per-wordpiece, according to our byte-pair encoding, and should not be compared to",
+                "page": 9,
+                "rect": [108.0, 91.4, 504.0, 103.4],
+            },
+            {
+                "text": "per-word perplexities.",
+                "page": 9,
+                "rect": [108.0, 102.3, 195.5, 114.3],
+            },
+            {
+                "text": "trainPPLBLEUparams",
+                "page": 9,
+                "rect": [371.1, 129.8, 502.8, 141.8],
+            },
+            {
+                "text": "NdmodeldffhdkdvPdropϵls",
+                "page": 9,
+                "rect": [146.1, 137.0, 356.0, 147.9],
+            },
+            {
+                "text": "steps(dev)(dev)×10⁶",
+                "page": 9,
+                "rect": [370.3, 141.2, 499.0, 160.0],
+            },
+            {
+                "text": "base65122048864640.10.1100K4.9225.865",
+                "page": 9,
+                "rect": [116.5, 153.9, 493.4, 165.9],
+            },
+            {
+                "text": "15125125.2924.9",
+                "page": 9,
+                "rect": [236.6, 166.5, 457.7, 178.5],
+            },
+            {
+                "text": "41281285.0025.5",
+                "page": 9,
+                "rect": [236.6, 177.4, 457.7, 189.4],
+            },
+            {
+                "text": "(A)",
+                "page": 9,
+                "rect": [118.4, 182.9, 132.2, 194.9],
+            },
+            {
+                "text": "1632324.9125.8",
+                "page": 9,
+                "rect": [234.1, 188.3, 457.7, 200.3],
+            },
+            {
+                "text": "3216165.0125.4",
+                "page": 9,
+                "rect": [234.1, 199.2, 457.7, 211.2],
+            },
+            {
+                "text": "(B)165.1625.158",
+                "page": 9,
+                "rect": [118.7, 211.9, 493.4, 229.3],
+            },
+            {
+                "text": "325.0125.460",
+                "page": 9,
+                "rect": [258.5, 222.8, 493.4, 234.8],
+            },
+            {
+                "text": "26.1123.736",
+                "page": 9,
+                "rect": [148.2, 235.4, 493.4, 247.4],
+            },
+            {
+                "text": "45.1925.350",
+                "page": 9,
+                "rect": [148.2, 246.3, 493.4, 258.3],
+            },
+            {
+                "text": "84.8825.580",
+                "page": 9,
+                "rect": [148.2, 257.2, 493.4, 269.2],
+            },
+            {
+                "text": "(C)",
+                "page": 9,
+                "rect": [118.7, 268.1, 132.0, 280.1],
+            },
+            {
+                "text": "25632325.7524.528",
+                "page": 9,
+                "rect": [171.3, 268.1, 493.4, 280.1],
+            },
+            {
+                "text": "10241281284.6626.0168",
+                "page": 9,
+                "rect": [168.8, 279.0, 495.8, 291.0],
+            },
+            {
+                "text": "10245.1225.453",
+                "page": 9,
+                "rect": [202.2, 289.9, 493.4, 302.0],
+            },
+            {
+                "text": "40964.7526.290",
+                "page": 9,
+                "rect": [202.2, 300.9, 493.4, 312.9],
+            },
+            {
+                "text": "0.05.7724.6",
+                "page": 9,
+                "rect": [315.1, 313.5, 457.7, 325.5],
+            },
+            {
+                "text": "0.24.9525.5",
+                "page": 9,
+                "rect": [315.1, 324.4, 457.7, 336.4],
+            },
+            {
+                "text": "(D)",
+                "page": 9,
+                "rect": [118.4, 329.9, 132.2, 341.9],
+            },
+            {
+                "text": "0.04.6725.3",
+                "page": 9,
+                "rect": [344.8, 335.3, 457.7, 347.3],
+            },
+            {
+                "text": "0.25.4725.7",
+                "page": 9,
+                "rect": [344.8, 346.2, 457.7, 358.2],
+            },
+            {
+                "text": "(E)positional embedding instead of sinusoids4.9225.7",
+                "page": 9,
+                "rect": [119.0, 358.9, 457.7, 370.9],
+            },
+            {
+                "text": "big610244096160.3300K4.3326.4213",
+                "page": 9,
+                "rect": [119.0, 371.1, 495.8, 384.1],
+            },
+            {
+                "text": "development set, newstest2013. We used beam search as described in the previous section, but no",
+                "page": 9,
+                "rect": [108.0, 412.1, 504.0, 424.1],
+            },
+            {
+                "text": "checkpoint averaging. We present these results in Table 3.",
+                "page": 9,
+                "rect": [108.0, 423.0, 339.1, 435.0],
+            },
+        ]
+    )
+
+    table_regions = [
+        paragraph for paragraph in paragraphs if paragraph.get("kind") == BlockKind.table
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.table
+    )
+
+    assert len(table_regions) == 1
+    assert "NdmodeldffhdkdvPdropϵls" in table_regions[0]["text"]
+    assert "base65122048864640" in table_regions[0]["text"]
+    assert "(A)" in table_regions[0]["text"]
+    assert "25632325.7524.528" in table_regions[0]["text"]
+    assert "0.05.7724.6" in table_regions[0]["text"]
+    assert "big610244096160.3300K4.3326.4213" in table_regions[0]["text"]
+    assert "beam search" not in table_regions[0]["text"]
+    assert "NdmodeldffhdkdvPdropϵls" not in plain_text
+    assert "base65122048864640" not in plain_text
+    assert "0.05.7724.6" not in plain_text
+    assert "big610244096160.3300K4.3326.4213" not in plain_text
+    assert "beam search" in plain_text
+
+
+def test_extract_lines_omits_bottom_footnotes_and_page_numbers(tmp_path):
+    pdf_path = write_bottom_footer_noise_pdf(tmp_path / "footer-noise.pdf")
+
+    lines = pdf_converter._extract_lines(pdf_path)
+    text = " ".join(line["text"] for line in lines)
+
+    assert "we varied our base model in different ways." in text
+    assert "TFLOPS" not in text
+    assert " 8 " not in f" {text} "
+
+
 def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):
     pdf_path = write_unlabeled_equation_pdf(tmp_path / "equation.pdf")
     output_dir = tmp_path / "out"
@@ -437,6 +639,30 @@ def test_equation_clip_keeps_horizontal_padding_without_broad_vertical_crop():
     assert clip.x1 >= 368
     assert clip.y0 <= 92
     assert clip.y1 >= 138
+
+
+def test_asset_image_source_prefers_block_anchor_over_earlier_reference():
+    asset = DocumentAsset(
+        id="table-3",
+        kind=AssetKind.table,
+        label="Table 3",
+        relativePath="assets/table-3.png",
+    )
+    reference_line = {
+        "text": "The configuration of this model is listed in the bottom line of Table 3.",
+        "page": 8,
+        "rect": [108, 449, 504, 461],
+    }
+    table_line = {
+        "text": "Table 3: Variations on the Transformer architecture.",
+        "page": 9,
+        "rect": [108, 69, 504, 384],
+        "assetId": "table-3",
+    }
+
+    match = pdf_converter._line_for_asset(asset, [reference_line, table_line])
+
+    assert match == table_line
 
 
 def _png_dimensions(path):
