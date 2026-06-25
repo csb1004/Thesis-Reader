@@ -4,6 +4,7 @@ from services.converter.tests.fixtures import (
     write_attention_equation_pdf,
     write_hyphenated_line_pdf,
     write_simple_paper_pdf,
+    write_unlabeled_equation_pdf,
     write_wrapped_paragraph_pdf,
 )
 
@@ -83,3 +84,26 @@ def test_exports_attention_equation_as_image_asset(tmp_path):
     assert (output_dir / equation_assets[0].relativePath).is_file()
     assert "Attention(Q, K, V)" not in text
     assert "QKT" not in text
+
+
+def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):
+    pdf_path = write_unlabeled_equation_pdf(tmp_path / "equation.pdf")
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        document_id="doc-1",
+    )
+
+    equation_asset = next(
+        asset for asset in package.assets if asset.kind == AssetKind.equation
+    )
+    width, height = _png_dimensions(output_dir / equation_asset.relativePath)
+
+    assert width < 900
+    assert height < 220
+
+
+def _png_dimensions(path):
+    data = path.read_bytes()
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")

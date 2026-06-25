@@ -58,6 +58,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
                     relativePath=f"assets/eq-{_reference_number(label)}.png",
                 ),
             )
+            line["assetId"] = asset.id
             blocks.append(
                 DocumentBlock(
                     id=block_id,
@@ -341,6 +342,8 @@ def _write_asset_images(
 
 def _line_for_asset(asset: DocumentAsset, lines: list[dict]) -> dict | None:
     for line in lines:
+        if line.get("assetId") == asset.id:
+            return line
         if asset.label in line["text"]:
             return line
     return None

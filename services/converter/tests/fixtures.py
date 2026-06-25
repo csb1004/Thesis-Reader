@@ -52,3 +52,16 @@ def write_attention_equation_pdf(path: Path) -> Path:
     c.drawString(72, 656, "(1)")
     c.save()
     return path
+
+
+def write_unlabeled_equation_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Unlabeled Equation Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(72, 720, "We compute the matrix of outputs as:")
+    c.drawString(72, 704, "MultiHead(Q, K, V) = Concat(head1,...,headh)WO")
+    c.drawString(72, 688, "headi = Attention(QWiQ, KWiK, VWiV)")
+    c.drawString(72, 648, "Where the projections are parameter matrices.")
+    c.save()
+    return path
