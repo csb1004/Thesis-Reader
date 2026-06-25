@@ -7,6 +7,7 @@ from services.converter.app.conversion.pdf_converter import convert_pdf_to_packa
 from services.converter.app.models.document_package import AssetKind, BlockKind, ReferenceKind
 from services.converter.app.models.document_package import DocumentAsset
 from services.converter.tests.fixtures import (
+    write_bleu_table_with_caption_gap_pdf,
     write_complexity_table_pdf,
     write_numbered_table_region_pdf,
     write_attention_equation_pdf,
@@ -273,6 +274,29 @@ def test_preserves_numbered_table_regions_as_table_assets(tmp_path):
     assert "Self-Attention" not in text
     assert "O(1)" not in text
     assert "Positional Encoding" in text
+
+
+def test_preserves_table_rows_after_caption_gap_as_table_asset(tmp_path):
+    pdf_path = write_bleu_table_with_caption_gap_pdf(tmp_path / "bleu-table.pdf")
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        document_id="doc-1",
+    )
+
+    table_blocks = [block for block in package.blocks if block.kind == BlockKind.table]
+    table_assets = [asset for asset in package.assets if asset.kind == AssetKind.table]
+    text = " ".join(block.text or "" for block in package.blocks)
+
+    assert len(table_blocks) == 1
+    assert len(table_assets) == 1
+    assert table_blocks[0].assetId == table_assets[0].id
+    assert (output_dir / table_assets[0].relativePath).is_file()
+    assert "ByteNet" not in text
+    assert "EN-DE" not in text
+    assert "Deep-Att" not in text
+    assert "Transformer (big) outperforms previous ensembles." in text
 
 
 def test_unlabeled_equation_asset_uses_equation_clip_not_full_page(tmp_path):

@@ -148,3 +148,35 @@ def write_numbered_table_region_pdf(path: Path) -> Path:
     c.drawString(72, 596, "Since our model contains no recurrence and no convolution.")
     c.save()
     return path
+
+
+def write_bleu_table_with_caption_gap_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "BLEU Table Paper")
+    c.setFont("Helvetica", 8)
+    c.drawString(
+        72,
+        720,
+        "Table 2: The Transformer achieves better BLEU scores than previous state-of-the-art models.",
+    )
+    c.line(72, 670, 520, 670)
+    c.drawString(190, 656, "BLEU")
+    c.drawString(330, 656, "Training Cost (FLOPs)")
+    c.drawString(180, 642, "EN-DE")
+    c.drawString(230, 642, "EN-FR")
+    c.drawString(330, 642, "EN-DE")
+    c.drawString(390, 642, "EN-FR")
+    c.line(72, 634, 520, 634)
+    c.drawString(72, 618, "ByteNet [18]")
+    c.drawString(180, 618, "23.75")
+    c.drawString(72, 602, "Deep-Att + PosUnk [39]")
+    c.drawString(180, 602, "39.2")
+    c.drawString(330, 602, "1.0 · 10")
+    c.setFont("Helvetica", 6)
+    c.drawString(365, 606, "20")
+    c.setFont("Helvetica", 8)
+    c.drawString(72, 540, "3.1 Results")
+    c.drawString(72, 516, "Transformer (big) outperforms previous ensembles.")
+    c.save()
+    return path

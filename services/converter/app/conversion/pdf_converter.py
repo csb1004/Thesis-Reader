@@ -27,6 +27,8 @@ REFERENCE_PATTERNS = (
 EQUATION_CLIP_LEFT_PADDING = 32.0
 EQUATION_CLIP_RIGHT_PADDING = 80.0
 EQUATION_CLIP_VERTICAL_PADDING = 8.0
+TABLE_REGION_CLOSE_GAP = 36.0
+TABLE_REGION_CONTENT_GAP = 72.0
 SUPERSCRIPT_TRANSLATION = str.maketrans(
     "0123456789+-=()n",
     "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿ",
@@ -362,7 +364,7 @@ def _looks_like_inline_math_sentence(text: str) -> bool:
 
 
 def _looks_like_table_start(text: str) -> bool:
-    return bool(re.match(r"^Table\s+\d+\s*:", text.strip()))
+    return bool(re.match(r"^Table\s+\d+\s*[:.]", text.strip()))
 
 
 def _should_continue_table_region(table: dict, line: dict) -> bool:
@@ -372,7 +374,28 @@ def _should_continue_table_region(table: dict, line: dict) -> bool:
         return False
 
     vertical_gap = line["rect"][1] - table["rect"][3]
-    return -4 <= vertical_gap <= 36
+    if -4 <= vertical_gap <= TABLE_REGION_CLOSE_GAP:
+        return True
+    return (
+        0 <= vertical_gap <= TABLE_REGION_CONTENT_GAP
+        and _looks_like_table_content(line["text"])
+    )
+
+
+def _looks_like_table_content(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped or _looks_like_numbered_section_heading(stripped):
+        return False
+    if any(
+        marker in stripped
+        for marker in ("BLEU", "FLOP", "EN-DE", "EN-FR", "Training Cost")
+    ):
+        return True
+    if re.search(r"\[[0-9]+\]", stripped) and re.search(r"\d", stripped):
+        return True
+    if len(re.findall(r"\d+(?:\.\d+)?", stripped)) >= 2:
+        return True
+    return bool(re.search(r"[A-Z]{2,}(?:-[A-Z]{2,})+", stripped))
 
 
 def _looks_like_numbered_section_heading(text: str) -> bool:
