@@ -19,7 +19,7 @@ import 'package:thesis_reader/features/vocabulary/presentation/vocabulary_screen
 import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
 
 const _readerTopChromeReserve = kToolbarHeight + 8;
-const _readerBottomInsetReserve = 12.0;
+const _readerBottomInsetReserve = 28.0;
 
 final class ReaderProgress {
   const ReaderProgress({
@@ -793,6 +793,8 @@ final class _PageModeReader extends StatelessWidget {
               children: [
                 Expanded(
                   child: SingleChildScrollView(
+                    key: const Key('reader-page-content-scroll-view'),
+                    clipBehavior: Clip.none,
                     physics: const NeverScrollableScrollPhysics(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

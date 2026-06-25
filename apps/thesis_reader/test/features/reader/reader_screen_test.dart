@@ -150,6 +150,28 @@ void main() {
     expect(textTop, greaterThan(kToolbarHeight));
   });
 
+  testWidgets('page reader does not hard clip text at the footer boundary', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks([
+            'A dense thesis paragraph ${'keeps enough text near the bottom. ' * 80}',
+          ]),
+          initialSettings: const ReaderSettings(fontScale: 1.5),
+        ),
+      ),
+    );
+
+    final pageScrollView = tester.widget<SingleChildScrollView>(
+      find.byKey(const Key('reader-page-content-scroll-view')),
+    );
+
+    expect(pageScrollView.clipBehavior, Clip.none);
+  });
+
   testWidgets('bottom slider changes the current page when chrome is visible', (
     tester,
   ) async {
