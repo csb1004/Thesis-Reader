@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:document_contract/document_contract.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 
+const _pageBottomGuardLines = 2;
+const _headingFollowerReserveLines = 3;
+
 final class ReaderViewport {
   const ReaderViewport({
     required this.width,
@@ -73,9 +76,19 @@ final class ReaderLayoutEngine {
       currentPageHasOnlyHeadings = true;
     }
 
-    for (final block in package.blocks) {
+    final blocks = package.blocks;
+    for (var index = 0; index < blocks.length; index += 1) {
+      final block = blocks[index];
       final blockLines = metrics.estimateBlockLines(block);
       final isHeading = _looksLikeHeading(block.text);
+      if (isHeading &&
+          currentBlockIds.isNotEmpty &&
+          currentLineCount +
+                  blockLines +
+                  _followerReserveLines(blocks, index, metrics) >
+              metrics.linesPerPage) {
+        flushPage();
+      }
       if (currentBlockIds.isNotEmpty &&
           currentLineCount + blockLines > metrics.linesPerPage &&
           !currentPageHasOnlyHeadings) {
@@ -96,6 +109,24 @@ final class ReaderLayoutEngine {
       linesPerPage: metrics.linesPerPage,
     );
   }
+}
+
+int _followerReserveLines(
+  List<DocumentBlock> blocks,
+  int headingIndex,
+  _ReaderMetrics metrics,
+) {
+  for (var index = headingIndex + 1; index < blocks.length; index += 1) {
+    final block = blocks[index];
+    if (_looksLikeHeading(block.text)) {
+      continue;
+    }
+    return math.min(
+      metrics.estimateBlockLines(block),
+      _headingFollowerReserveLines,
+    );
+  }
+  return 0;
 }
 
 bool _looksLikeHeading(String? text) {
@@ -142,9 +173,11 @@ final class _ReaderMetrics {
     );
     final averageCharWidth = fontSize * 0.55;
 
+    final rawLinesPerPage = (contentHeight / effectiveLineHeight).floor();
+
     return _ReaderMetrics(
       charsPerLine: math.max(8, (contentWidth / averageCharWidth).floor()),
-      linesPerPage: math.max(1, (contentHeight / effectiveLineHeight).floor()),
+      linesPerPage: math.max(1, rawLinesPerPage - _pageBottomGuardLines),
     );
   }
 

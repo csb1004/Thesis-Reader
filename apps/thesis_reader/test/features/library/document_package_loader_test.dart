@@ -179,4 +179,54 @@ void main() {
       'transduction models Decoder: The stack is repeated.',
     );
   });
+
+  test(
+    'normalizes cached attention equation text without changing structure',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('package_loader_test');
+      final packageFile = File(
+        p.join(temp.path, 'packages', 'doc-1', 'package.json'),
+      );
+      await packageFile.parent.create(recursive: true);
+      await packageFile.writeAsString(
+        jsonEncode({
+          'packageVersion': 1,
+          'documentId': 'doc-1',
+          'metadata': {
+            'title': 'Cached title',
+            'sourceFilename': 'paper.pdf',
+            'originalPdfSha256': 'abc123',
+            'converterVersion': 'mvp-1',
+          },
+          'sections': [
+            {
+              'id': 'sec-1',
+              'title': 'Document',
+              'blockIds': ['block-1'],
+            },
+          ],
+          'blocks': [
+            {
+              'id': 'block-1',
+              'sectionId': 'sec-1',
+              'kind': 'paragraph',
+              'text': 'Attention(Q, K, V ) = softmax(QKT\n√dk\n)V\n(1)',
+            },
+          ],
+          'assets': [],
+        }),
+      );
+
+      final loaded = await DocumentPackageLoader.load(
+        documentId: 'doc-1',
+        appDirectory: temp,
+        storedPackagePath: null,
+      );
+
+      expect(
+        loaded?.package.blocks.single.text,
+        'Attention(Q, K, V) = softmax(QK^T / √d_k) V (1)',
+      );
+    },
+  );
 }

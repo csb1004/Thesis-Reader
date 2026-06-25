@@ -38,3 +38,17 @@ def write_hyphenated_line_pdf(path: Path) -> Path:
     c.drawString(72, 704, "tion models in various tasks.")
     c.save()
     return path
+
+
+def write_attention_equation_pdf(path: Path) -> Path:
+    c = canvas.Canvas(str(path))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(72, 760, "Equation Paper")
+    c.setFont("Helvetica", 11)
+    c.drawString(72, 720, "We compute the matrix of outputs as:")
+    c.drawString(72, 704, "Attention(Q, K, V ) = softmax(QKT")
+    c.drawString(72, 688, "√dk")
+    c.drawString(72, 672, ")V")
+    c.drawString(72, 656, "(1)")
+    c.save()
+    return path

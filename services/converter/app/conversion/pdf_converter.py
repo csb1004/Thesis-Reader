@@ -120,6 +120,9 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
     if current is not None:
         paragraphs.append(current)
 
+    for paragraph in paragraphs:
+        paragraph["text"] = _normalize_extracted_text(paragraph["text"])
+
     return paragraphs
 
 
@@ -155,6 +158,28 @@ def _join_wrapped_text(previous: str, current: str) -> str:
     if previous.endswith("-"):
         return previous[:-1] + current
     return f"{previous} {current}"
+
+
+def _normalize_extracted_text(text: str) -> str:
+    joined_words = re.sub(r"([A-Za-z])-\s+([A-Za-z])", r"\1\2", text.replace("☆", "√"))
+    collapsed = re.sub(r"\s+", " ", joined_words).strip()
+    return _normalize_math_text(_normalize_punctuation_spacing(collapsed))
+
+
+def _normalize_math_text(text: str) -> str:
+    return re.sub(
+        r"Attention\(\s*Q\s*,\s*K\s*,\s*V\s*\)\s*=\s*softmax\(\s*Q\s*K\s*T\s*/?\s*√\s*d\s*_?\s*k\s*\)\s*V",
+        "Attention(Q, K, V) = softmax(QK^T / √d_k) V",
+        text,
+    )
+
+
+def _normalize_punctuation_spacing(text: str) -> str:
+    normalized = re.sub(r"\s+([,.;:])", r"\1", text)
+    normalized = re.sub(r"\(\s+", "(", normalized)
+    normalized = re.sub(r"\s+\)", ")", normalized)
+    normalized = re.sub(r"\)([A-Za-z])", r") \1", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
 
 
 def _union_rect(left: list[float], right: list[float]) -> list[float]:

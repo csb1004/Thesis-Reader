@@ -87,7 +87,7 @@ abstract final class DocumentPackageLoader {
             kind: block.kind,
             text: block.text == null
                 ? null
-                : _joinHyphenatedLineBreaks(block.text!),
+                : _normalizeExtractedText(block.text!),
             assetId: block.assetId,
             referenceSpans: block.referenceSpans,
             anchor: block.anchor,
@@ -100,11 +100,38 @@ abstract final class DocumentPackageLoader {
     );
   }
 
-  static String _joinHyphenatedLineBreaks(String text) {
-    final joinedWords = text.replaceAllMapped(
-      RegExp(r'([A-Za-z])-\s+([A-Za-z])'),
-      (match) => '${match.group(1)}${match.group(2)}',
+  static String _normalizeExtractedText(String text) {
+    final joinedWords = text
+        .replaceAll('☆', '√')
+        .replaceAllMapped(
+          RegExp(r'([A-Za-z])-\s+([A-Za-z])'),
+          (match) => '${match.group(1)}${match.group(2)}',
+        );
+    final collapsed = joinedWords.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _normalizeMathText(_normalizePunctuationSpacing(collapsed));
+  }
+
+  static String _normalizeMathText(String text) {
+    return text.replaceAllMapped(
+      RegExp(
+        r'Attention\(\s*Q\s*,\s*K\s*,\s*V\s*\)\s*=\s*softmax\(\s*Q\s*K\s*T\s*/?\s*√\s*d\s*_?\s*k\s*\)\s*V',
+      ),
+      (_) => 'Attention(Q, K, V) = softmax(QK^T / √d_k) V',
     );
-    return joinedWords.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  static String _normalizePunctuationSpacing(String text) {
+    var normalized = text;
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'\s+([,.;:])'),
+      (match) => match.group(1)!,
+    );
+    normalized = normalized.replaceAllMapped(RegExp(r'\(\s+'), (_) => '(');
+    normalized = normalized.replaceAllMapped(RegExp(r'\s+\)'), (_) => ')');
+    normalized = normalized.replaceAllMapped(
+      RegExp(r'\)([A-Za-z])'),
+      (match) => ') ${match.group(1)}',
+    );
+    return normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 }

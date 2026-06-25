@@ -1,5 +1,6 @@
 from services.converter.app.conversion.pdf_converter import convert_pdf_to_package
 from services.converter.tests.fixtures import (
+    write_attention_equation_pdf,
     write_hyphenated_line_pdf,
     write_simple_paper_pdf,
     write_wrapped_paragraph_pdf,
@@ -41,3 +42,15 @@ def test_joins_hyphenated_line_breaks_inside_words(tmp_path):
 
     assert "transduction models" in text
     assert "transduc-" not in text
+
+
+def test_normalizes_attention_equation_fragments(tmp_path):
+    pdf_path = write_attention_equation_pdf(tmp_path / "equation.pdf")
+    output_dir = tmp_path / "out"
+    package = convert_pdf_to_package(pdf_path=pdf_path, output_dir=output_dir, document_id="doc-1")
+
+    text = " ".join(block.text or "" for block in package.blocks)
+
+    assert "Attention(Q, K, V) = softmax(QK^T / √d_k) V (1)" in text
+    assert "QKT" not in text
+    assert "√dk" not in text
