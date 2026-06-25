@@ -24,12 +24,34 @@ final class ReaderPage {
   const ReaderPage({
     required this.pageNumber,
     required this.blockIds,
+    required this.items,
     required this.estimatedLineCount,
   });
 
   final int pageNumber;
   final List<String> blockIds;
+  final List<ReaderPageItem> items;
   final int estimatedLineCount;
+}
+
+final class ReaderPageItem {
+  const ReaderPageItem({
+    required this.blockId,
+    required this.estimatedLineCount,
+    this.text,
+    this.startOffset,
+    this.endOffset,
+    this.continuesFromPrevious = false,
+    this.continuesAfter = false,
+  });
+
+  final String blockId;
+  final int estimatedLineCount;
+  final String? text;
+  final int? startOffset;
+  final int? endOffset;
+  final bool continuesFromPrevious;
+  final bool continuesAfter;
 }
 
 final class ReaderLayoutResult {
@@ -56,47 +78,94 @@ final class ReaderLayoutEngine {
   ) {
     final metrics = _ReaderMetrics.from(settings, viewport);
     final pages = <ReaderPage>[];
-    var currentBlockIds = <String>[];
+    var currentItems = <ReaderPageItem>[];
     var currentLineCount = 0;
-    var currentPageHasOnlyHeadings = true;
 
     void flushPage() {
-      if (currentBlockIds.isEmpty) {
+      if (currentItems.isEmpty) {
         return;
       }
       pages.add(
         ReaderPage(
           pageNumber: pages.length + 1,
-          blockIds: List.unmodifiable(currentBlockIds),
+          blockIds: List.unmodifiable(_uniqueBlockIds(currentItems)),
+          items: List.unmodifiable(currentItems),
           estimatedLineCount: currentLineCount,
         ),
       );
-      currentBlockIds = <String>[];
+      currentItems = <ReaderPageItem>[];
       currentLineCount = 0;
-      currentPageHasOnlyHeadings = true;
+    }
+
+    void addItem(ReaderPageItem item) {
+      if (currentItems.isNotEmpty &&
+          currentLineCount + item.estimatedLineCount > metrics.linesPerPage) {
+        flushPage();
+      }
+      currentItems.add(item);
+      currentLineCount += item.estimatedLineCount;
     }
 
     final blocks = package.blocks;
     for (var index = 0; index < blocks.length; index += 1) {
       final block = blocks[index];
-      final blockLines = metrics.estimateBlockLines(block);
       final isHeading = _looksLikeHeading(block.text);
       if (isHeading &&
-          currentBlockIds.isNotEmpty &&
+          currentItems.isNotEmpty &&
           currentLineCount +
-                  blockLines +
+                  metrics.estimateBlockLines(block) +
                   _followerReserveLines(blocks, index, metrics) >
               metrics.linesPerPage) {
         flushPage();
       }
-      if (currentBlockIds.isNotEmpty &&
-          currentLineCount + blockLines > metrics.linesPerPage &&
-          !currentPageHasOnlyHeadings) {
-        flushPage();
+
+      if (block.text case final text?) {
+        final lines = metrics.wrapText(text);
+        var lineIndex = 0;
+        while (lineIndex < lines.length) {
+          var availableLines = metrics.linesPerPage - currentLineCount;
+          if (availableLines <= 0) {
+            flushPage();
+            availableLines = metrics.linesPerPage;
+          }
+
+          final remainingLines = lines.length - lineIndex;
+          var take = math.min(remainingLines, availableLines);
+          final takesRest = take == remainingLines;
+          if (takesRest &&
+              take + 1 > availableLines &&
+              currentItems.isNotEmpty) {
+            flushPage();
+            availableLines = metrics.linesPerPage;
+            take = math.min(remainingLines, math.max(1, availableLines - 1));
+          } else if (takesRest && take + 1 > availableLines) {
+            take = math.max(1, availableLines - 1);
+          }
+
+          final chunkStart = lines[lineIndex].start;
+          final chunkEnd = lines[lineIndex + take - 1].end;
+          final isFinalChunk = lineIndex + take >= lines.length;
+          addItem(
+            ReaderPageItem(
+              blockId: block.id,
+              text: text.substring(chunkStart, chunkEnd),
+              startOffset: chunkStart,
+              endOffset: chunkEnd,
+              estimatedLineCount: take + (isFinalChunk ? 1 : 0),
+              continuesFromPrevious: lineIndex > 0,
+              continuesAfter: !isFinalChunk,
+            ),
+          );
+          lineIndex += take;
+        }
+      } else {
+        addItem(
+          ReaderPageItem(
+            blockId: block.id,
+            estimatedLineCount: metrics.estimateBlockLines(block),
+          ),
+        );
       }
-      currentBlockIds.add(block.id);
-      currentLineCount += blockLines;
-      currentPageHasOnlyHeadings = currentPageHasOnlyHeadings && isHeading;
     }
     flushPage();
 
@@ -109,6 +178,16 @@ final class ReaderLayoutEngine {
       linesPerPage: metrics.linesPerPage,
     );
   }
+}
+
+List<String> _uniqueBlockIds(List<ReaderPageItem> items) {
+  final ids = <String>[];
+  for (final item in items) {
+    if (!ids.contains(item.blockId)) {
+      ids.add(item.blockId);
+    }
+  }
+  return ids;
 }
 
 int _followerReserveLines(
@@ -184,17 +263,45 @@ final class _ReaderMetrics {
   final int charsPerLine;
   final int linesPerPage;
 
+  List<_TextLine> wrapText(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return const [_TextLine(0, 0)];
+    }
+
+    final lines = <_TextLine>[];
+    int? lineStart;
+    var lineEnd = 0;
+    var lineLength = 0;
+    for (final match in RegExp(r'\S+').allMatches(text)) {
+      final wordLength = match.end - match.start;
+      if (lineStart == null) {
+        lineStart = match.start;
+        lineEnd = match.end;
+        lineLength = wordLength;
+        continue;
+      }
+
+      if (lineLength + 1 + wordLength > charsPerLine) {
+        lines.add(_TextLine(lineStart, lineEnd));
+        lineStart = match.start;
+        lineEnd = match.end;
+        lineLength = wordLength;
+      } else {
+        lineEnd = match.end;
+        lineLength += 1 + wordLength;
+      }
+    }
+
+    if (lineStart != null) {
+      lines.add(_TextLine(lineStart, lineEnd));
+    }
+    return lines.isEmpty ? const [_TextLine(0, 0)] : List.unmodifiable(lines);
+  }
+
   int estimateBlockLines(DocumentBlock block) {
     if (block.text case final text?) {
-      final normalized = text.trim();
-      if (normalized.isEmpty) {
-        return 1;
-      }
-      final explicitLines = normalized.split(RegExp(r'\n+'));
-      final wrappedLineCount = explicitLines.fold<int>(0, (sum, line) {
-        return sum + math.max(1, (line.length / charsPerLine).ceil());
-      });
-      return math.max(1, wrappedLineCount) + 1;
+      return math.max(1, wrapText(text).length) + 1;
     }
 
     return switch (block.kind) {
@@ -202,4 +309,11 @@ final class _ReaderMetrics {
       _ => 2,
     };
   }
+}
+
+final class _TextLine {
+  const _TextLine(this.start, this.end);
+
+  final int start;
+  final int end;
 }

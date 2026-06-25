@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:document_contract/document_contract.dart';
@@ -129,29 +130,33 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     final package = widget.package;
 
     return Scaffold(
-      appBar: package == null ? AppBar(
-        title: Text(widget.displayTitle ?? package?.metadata.title ?? '리더'),
-        actions: [
-          if (package != null)
-            IconButton(
-              tooltip: '현재 페이지 요약',
-              icon: const Icon(Icons.summarize_outlined),
-              onPressed: _summarizeCurrentPage,
-            ),
-          if (package != null)
-            IconButton(
-              tooltip: '단어장',
-              icon: const Icon(Icons.menu_book_outlined),
-              onPressed: _openVocabulary,
-            ),
-          if (package != null)
-            IconButton(
-              tooltip: '보기 설정',
-              icon: const Icon(Icons.tune),
-              onPressed: _showSettings,
-            ),
-        ],
-      ) : null,
+      appBar: package == null
+          ? AppBar(
+              title: Text(
+                widget.displayTitle ?? package?.metadata.title ?? '리더',
+              ),
+              actions: [
+                if (package != null)
+                  IconButton(
+                    tooltip: '현재 페이지 요약',
+                    icon: const Icon(Icons.summarize_outlined),
+                    onPressed: _summarizeCurrentPage,
+                  ),
+                if (package != null)
+                  IconButton(
+                    tooltip: '단어장',
+                    icon: const Icon(Icons.menu_book_outlined),
+                    onPressed: _openVocabulary,
+                  ),
+                if (package != null)
+                  IconButton(
+                    tooltip: '보기 설정',
+                    icon: const Icon(Icons.tune),
+                    onPressed: _showSettings,
+                  ),
+              ],
+            )
+          : null,
       body: package == null
           ? _OriginalPdfFallback(path: widget.originalPdfPath)
           : Stack(
@@ -792,13 +797,14 @@ final class _PageModeReader extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (final blockId in page.blockIds)
-                          if (blocksById[blockId] case final block?)
+                        for (final item in page.items)
+                          if (blocksById[item.blockId] case final block?)
                             _ReaderBlock(
-                              block: block,
+                              block: _blockForPageItem(block, item),
                               settings: settings,
                               readerTheme: readerTheme,
                               assetsById: assetsById,
+                              addBottomSpacing: !item.continuesAfter,
                               onAssetPressed: onAssetPressed,
                               onSimpleTranslateSelection:
                                   onSimpleTranslateSelection,
@@ -817,6 +823,33 @@ final class _PageModeReader extends StatelessWidget {
       },
     );
   }
+}
+
+DocumentBlock _blockForPageItem(DocumentBlock block, ReaderPageItem item) {
+  if (item.text == null) {
+    return block;
+  }
+  final startOffset = item.startOffset ?? 0;
+  final endOffset = item.endOffset ?? startOffset + item.text!.length;
+  return DocumentBlock(
+    id: block.id,
+    sectionId: block.sectionId,
+    kind: block.kind,
+    text: item.text,
+    assetId: block.assetId,
+    referenceSpans: [
+      for (final span in block.referenceSpans)
+        if (span.end > startOffset && span.start < endOffset)
+          ReferenceSpan(
+            start: math.max(span.start, startOffset) - startOffset,
+            end: math.min(span.end, endOffset) - startOffset,
+            targetAssetId: span.targetAssetId,
+            kind: span.kind,
+            label: span.label,
+          ),
+    ],
+    anchor: block.anchor,
+  );
 }
 
 final class _ReaderPageSlider extends StatelessWidget {
@@ -1000,6 +1033,7 @@ final class _ReaderBlock extends StatelessWidget {
     required this.settings,
     required this.readerTheme,
     required this.assetsById,
+    this.addBottomSpacing = true,
     required this.onAssetPressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
@@ -1010,6 +1044,7 @@ final class _ReaderBlock extends StatelessWidget {
   final ReaderSettings settings;
   final ReaderThemeData readerTheme;
   final Map<String, DocumentAsset> assetsById;
+  final bool addBottomSpacing;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
@@ -1027,7 +1062,9 @@ final class _ReaderBlock extends StatelessWidget {
     if (block.text case final text?) {
       final isHeading = _looksLikeHeading(text);
       return Padding(
-        padding: EdgeInsets.only(bottom: isHeading ? 12 : 16),
+        padding: EdgeInsets.only(
+          bottom: addBottomSpacing ? (isHeading ? 12 : 16) : 0,
+        ),
         child: _ReferenceSelectableText(
           text: text,
           referenceSpans: block.referenceSpans,

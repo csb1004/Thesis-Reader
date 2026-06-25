@@ -274,4 +274,46 @@ void main() {
       isTrue,
     );
   });
+
+  test('splits long paragraphs across pages to keep pages filled', () {
+    final package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: const DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: const [
+        DocumentSection(id: 's1', title: 'Body', blockIds: ['long']),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'long',
+          sectionId: 's1',
+          text: List.generate(120, (index) => 'word$index').join(' '),
+        ),
+      ],
+      assets: const [],
+    );
+
+    final layout = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+      const ReaderViewport(width: 360, height: 360),
+    );
+
+    expect(layout.pages.length, greaterThan(1));
+    expect(layout.pages.first.blockIds, ['long']);
+    expect(layout.pages.first.items.single.blockId, 'long');
+    expect(layout.pages.first.items.single.text, isNotNull);
+    expect(layout.pages.first.items.single.text, isNot(contains('word119')));
+    expect(layout.pages.last.items.single.text, contains('word119'));
+    expect(
+      layout.pages.every(
+        (page) => page.estimatedLineCount <= layout.linesPerPage,
+      ),
+      isTrue,
+    );
+  });
 }
