@@ -70,6 +70,48 @@ void main() {
     expect(find.text('review later'), findsOneWidget);
   });
 
+  testWidgets('keeps source context compact and opens details on tap', (
+    tester,
+  ) async {
+    const longSource =
+        '2023 Abstract Knowledge Representation and Reasoning is a central, '
+        'longstanding, and active area of Artificial Intelligence. Over the '
+        'years it has evolved significantly and has been challenged by '
+        'research in reasoning under uncertainty.';
+    final repository = InMemoryVocabularyRepository();
+    await repository.upsert(
+      const VocabularyDraft(
+        documentId: 'doc-1',
+        expression: 'Over the years',
+        meaningKo: '수년에 걸쳐',
+        sourceSentence: longSource,
+        contextBefore: 'Previous sentence.',
+        contextAfter: 'Next sentence.',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VocabularyScreen(documentId: 'doc-1', repository: repository),
+      ),
+    );
+    await tester.pump();
+
+    final preview = tester.widget<Text>(
+      find.byKey(const Key('vocabulary-source-preview-text')),
+    );
+    expect(preview.maxLines, 2);
+    expect(preview.overflow, TextOverflow.ellipsis);
+
+    await tester.tap(find.byKey(const Key('vocabulary-source-preview')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('vocabulary-context-sheet')), findsOneWidget);
+    expect(find.text(longSource), findsWidgets);
+    expect(find.text('Previous sentence.'), findsOneWidget);
+    expect(find.text('Next sentence.'), findsOneWidget);
+  });
+
   testWidgets('deletes vocabulary entries from the screen', (tester) async {
     final repository = InMemoryVocabularyRepository();
     await repository.upsert(

@@ -164,7 +164,39 @@ final class _VocabularyEntryTile extends StatelessWidget {
               Text(meaningKo, style: Theme.of(context).textTheme.bodyLarge),
             if (entry.sourceSentence case final sourceSentence?) ...[
               const SizedBox(height: 8),
-              Text(sourceSentence),
+              InkWell(
+                key: const Key('vocabulary-source-preview'),
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _showVocabularyContext(context, entry),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          key: const Key('vocabulary-source-preview-text'),
+                          sourceSentence,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.open_in_full,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
             if (entry.userMeaning case final userMeaning?) ...[
               const SizedBox(height: 8),
@@ -191,6 +223,61 @@ final class _VocabularyEntryTile extends StatelessWidget {
             onPressed: onDelete,
           ),
         ],
+      ),
+    );
+  }
+}
+
+void _showVocabularyContext(BuildContext context, VocabularyEntryView entry) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => _VocabularyContextSheet(entry: entry),
+  );
+}
+
+final class _VocabularyContextSheet extends StatelessWidget {
+  const _VocabularyContextSheet({required this.entry});
+
+  final VocabularyEntryView entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return SafeArea(
+      key: const Key('vocabulary-context-sheet'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(entry.expression, style: textTheme.titleLarge),
+            if (entry.meaningKo case final meaningKo?) ...[
+              const SizedBox(height: 8),
+              Text(meaningKo, style: textTheme.bodyLarge),
+            ],
+            if (entry.contextBefore case final contextBefore?) ...[
+              const SizedBox(height: 20),
+              Text('Before', style: textTheme.labelLarge),
+              const SizedBox(height: 6),
+              SelectableText(contextBefore),
+            ],
+            if (entry.sourceSentence case final sourceSentence?) ...[
+              const SizedBox(height: 20),
+              Text('Source', style: textTheme.labelLarge),
+              const SizedBox(height: 6),
+              SelectableText(sourceSentence),
+            ],
+            if (entry.contextAfter case final contextAfter?) ...[
+              const SizedBox(height: 20),
+              Text('After', style: textTheme.labelLarge),
+              const SizedBox(height: 6),
+              SelectableText(contextAfter),
+            ],
+          ],
+        ),
       ),
     );
   }

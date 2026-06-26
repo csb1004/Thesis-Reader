@@ -734,6 +734,66 @@ def test_attention_visualization_region_becomes_figure_asset():
     assert "Acknowledgements" in plain_text
 
 
+def test_diffusion_graphical_model_region_becomes_figure_asset():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "that have produced images comparable to those of GANs [11, 55].",
+                "page": 2,
+                "rect": [72.0, 170.0, 504.0, 190.0],
+            },
+            {
+                "text": "Figure 1: Generated samples on CelebA-HQ 256 x 256 (left) and unconditional CIFAR10 (right)",
+                "page": 2,
+                "rect": [72.0, 220.0, 504.0, 244.0],
+            },
+            {
+                "text": "34th Conference on Neural Information Processing Systems (NeurIPS 2020), Vancouver, Canada.",
+                "page": 2,
+                "rect": [72.0, 248.0, 504.0, 272.0],
+            },
+            {
+                "text": "p√(xt−1|xt)",
+                "page": 2,
+                "rect": [72.0, 320.0, 180.0, 344.0],
+            },
+            {
+                "text": "xT−! · · · −!xt−−−−! xt−1 −! · · · −!",
+                "page": 2,
+                "rect": [72.0, 360.0, 420.0, 384.0],
+            },
+            {
+                "text": "x0 −! q(xt|xt−1) Figure 2: The directed graphical model considered in this work.",
+                "page": 2,
+                "rect": [72.0, 400.0, 504.0, 424.0],
+            },
+            {
+                "text": "The forward process gradually adds Gaussian noise to data.",
+                "page": 2,
+                "rect": [72.0, 470.0, 504.0, 490.0],
+            },
+        ]
+    )
+
+    figure_regions = [
+        paragraph for paragraph in paragraphs if paragraph.get("kind") == BlockKind.figure
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.figure
+    )
+
+    assert len(figure_regions) == 1
+    assert "Figure 2" in figure_regions[0]["text"]
+    assert "p√(xt−1|xt)" in figure_regions[0]["text"]
+    assert "xT−!" in figure_regions[0]["text"]
+    assert "p√(xt−1|xt)" not in plain_text
+    assert "xT−!" not in plain_text
+    assert "Figure 1: Generated samples" in plain_text
+    assert "The forward process gradually adds Gaussian noise to data." in plain_text
+
+
 def test_references_section_splits_numbered_entries():
     paragraphs = pdf_converter._merge_lines_into_paragraphs(
         [

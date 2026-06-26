@@ -370,7 +370,7 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
                 figure["rect"] = _union_rect(figure["rect"], line["rect"])
                 figure["_hasFigureCaption"] = bool(
                     figure.get("_hasFigureCaption")
-                ) or _looks_like_figure_caption_start(line["text"])
+                ) or _contains_figure_caption(line["text"])
                 continue
             flush_figure()
 
@@ -400,6 +400,7 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             figure = dict(line)
             figure["kind"] = BlockKind.figure
             figure["_hasFigureCaption"] = False
+            figure["_figureMode"] = _figure_visual_mode(line["text"])
             continue
 
         if _looks_like_equation_line(line["text"]) or (
@@ -517,14 +518,30 @@ def _looks_like_table_start(text: str) -> bool:
     return bool(re.match(r"^Table\s+\d+\s*[:.]", text.strip()))
 
 
-def _looks_like_figure_caption_start(text: str) -> bool:
-    return bool(re.match(r"^Figure\s+\d+\s*[:.]", text.strip()))
+def _contains_figure_caption(text: str) -> bool:
+    return bool(re.search(r"\bFigure\s+\d+\s*[:.]", text.strip()))
 
 
 def _looks_like_figure_visual_start(text: str) -> bool:
+    return _figure_visual_mode(text) is not None
+
+
+def _figure_visual_mode(text: str) -> str | None:
     stripped = text.strip()
-    return stripped.startswith("Input-Input Layer") or (
+    if stripped.startswith("Input-Input Layer") or (
         "Attention" in stripped and "Visualization" in stripped
+    ):
+        return "freeform"
+    if _looks_like_diffusion_graphical_model_line(stripped):
+        return "diagram"
+    return None
+
+
+def _looks_like_diffusion_graphical_model_line(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text.strip())
+    return bool(
+        re.search(r"(?:xT|x0|xt|x_t|q\(|p[√(])", compact)
+        and re.search(r"(?:[|√]|−!|-!|→|←|---)", compact)
     )
 
 
@@ -533,11 +550,13 @@ def _should_continue_figure_region(figure: dict, line: dict) -> bool:
         return False
     if _looks_like_table_start(line["text"]):
         return False
-    if _looks_like_figure_caption_start(line["text"]):
+    if _contains_figure_caption(line["text"]):
         return True
     if figure.get("_hasFigureCaption"):
         vertical_gap = line["rect"][1] - figure["rect"][3]
         return 0 <= vertical_gap <= 24 and not _looks_like_heading(line["text"])
+    if figure.get("_figureMode") == "diagram":
+        return _looks_like_diffusion_graphical_model_line(line["text"])
     return True
 
 
