@@ -497,6 +497,57 @@ void main() {
     expect(find.text('eq-1'), findsNothing);
   });
 
+  testWidgets('hides raw parser errors for unsupported latex macros', (
+    tester,
+  ) async {
+    final package = _packageWithCustomBlocks([
+      const DocumentBlock(
+        id: 'eq-unsupported',
+        sectionId: 's1',
+        kind: BlockKind.equation,
+        latex: r'\unknownmacro{x}',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('reader-latex-equation-eq-unsupported')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Parser Error'), findsNothing);
+    expect(find.textContaining('수식을 표시할 수 없습니다'), findsOneWidget);
+  });
+
+  testWidgets('renders normalized DDPM source equations', (tester) async {
+    final package = _packageWithCustomBlocks([
+      const DocumentBlock(
+        id: 'eq-ddpm',
+        sectionId: 's1',
+        kind: BlockKind.equation,
+        latex:
+            r'p_\theta(\mathbf{x}_{0:T}) := p(\mathbf{x}_T)\prod_{t=1}^T p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t), \boldsymbol{\mu}_\theta(\mathbf{x}_t,t)',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('reader-latex-equation-eq-ddpm')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Parser Error'), findsNothing);
+    expect(find.textContaining('수식을 표시할 수 없습니다'), findsNothing);
+  });
+
   testWidgets('renders table asset blocks inline', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

@@ -1121,6 +1121,11 @@ final class _ReaderBlock extends StatelessWidget {
             textStyle: textStyle.copyWith(
               fontSize: (textStyle.fontSize ?? 16) * 1.05,
             ),
+            onErrorFallback: (_) => _LatexErrorFallback(
+              latex: latex,
+              style: textStyle,
+              readerTheme: readerTheme,
+            ),
           ),
         ),
       );
@@ -1184,6 +1189,37 @@ final class _ReaderBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+final class _LatexErrorFallback extends StatelessWidget {
+  const _LatexErrorFallback({
+    required this.latex,
+    required this.style,
+    required this.readerTheme,
+  });
+
+  final String latex;
+  final TextStyle style;
+  final ReaderThemeData readerTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '수식을 표시할 수 없습니다\n${_readableLatexFallback(latex)}',
+      style: style.copyWith(
+        fontSize: (style.fontSize ?? 16) * 0.9,
+        color: readerTheme.textColor.withValues(alpha: 0.68),
+      ),
+    );
+  }
+}
+
+String _readableLatexFallback(String latex) {
+  final compact = latex.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (compact.length <= 180) {
+    return compact;
+  }
+  return '${compact.substring(0, 180)}...';
 }
 
 final class _InlineAssetPreview extends StatelessWidget {

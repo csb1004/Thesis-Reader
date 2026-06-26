@@ -136,3 +136,47 @@ stochastic gradient descent. Further improvements come from rewriting $L$
     assert "alpha_t:=1-beta_t" in body_text
     assert "prod_(s=1)^t alpha_s" in body_text
     assert "Equation vb original" in body_text
+
+
+def test_normalizes_ddpm_display_math_custom_macros(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Denoising Diffusion Probabilistic Models}
+\begin{document}
+\section{Background}
+\begin{align}
+\Ea{-\log p_\theta(\bx_0)} \leq \Eb{q}{ - \log \frac{p_\theta(\bx_{0:T})}{q(\bx_{1:T} | \bx_0)}}
+  = \mathbb{E}_q\bigg[ -\log p(\bx_T) \bigg] \eqqcolon L \label{eq:vb_original}
+\end{align}
+\begin{equation}
+q(\bx_t \mid \bx_0) = \mathcal{N}(\bx_t; \sqrt{\bar\alpha_t}\bx_0, (1-\bar\alpha_t)\bI)
+\end{equation}
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="2006.11239.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "2006.11239", "mainTex": "main.tex"},
+    )
+
+    latex = "\n".join(
+        block.latex or "" for block in package.blocks if block.kind == BlockKind.equation
+    )
+    assert r"\Ea" not in latex
+    assert r"\Eb" not in latex
+    assert r"\bx" not in latex
+    assert r"\bI" not in latex
+    assert r"\label" not in latex
+    assert r"\eqqcolon" not in latex
+    assert r"\mathbf{x}" in latex
+    assert r"\mathbf{I}" in latex
+    assert r"\mathbb{E}" in latex
+    assert ":= L" in latex

@@ -1,4 +1,5 @@
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -187,7 +188,7 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
         protected.append(
             {
                 "kind": kind,
-                "latex": content,
+                "latex": _normalize_display_latex(content) if kind == "equation" else content,
                 "environment": environment,
                 "text": text,
             }
@@ -510,3 +511,138 @@ def _script_text(text: str) -> str:
     if len(compact) > 1 and re.search(r"[=+\-/*, ]", compact):
         return f"({compact})"
     return compact
+
+
+def _normalize_display_latex(text: str) -> str:
+    normalized = text.strip()
+    normalized = re.sub(r"\\(?:label|tag)\{[^}]*\}", " ", normalized)
+    normalized = re.sub(r"\\(?:notag|nonumber)\b", " ", normalized)
+    normalized = re.sub(
+        r"\\(?:big|Big|bigg|Bigg|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr)",
+        "",
+        normalized,
+    )
+    normalized = normalized.replace(r"\eqqcolon", ":=")
+    normalized = normalized.replace(r"\coloneqq", ":=")
+    normalized = normalized.replace(r"\defeq", ":=")
+    normalized = normalized.replace(r"\grad", r"\nabla")
+    normalized = normalized.replace(r"\pdata", r"p_{\mathrm{data}}")
+    normalized = re.sub(r"\\E(?![a-zA-Z])", r"\\mathbb{E}", normalized)
+    normalized = re.sub(r"\\Var(?![a-zA-Z])", r"\\mathrm{Var}", normalized)
+    normalized = re.sub(r"\\Cov(?![a-zA-Z])", r"\\mathrm{Cov}", normalized)
+    normalized = _replace_latex_macro_args(
+        normalized,
+        "Ea",
+        1,
+        lambda args: rf"\mathbb{{E}}\left[{args[0]}\right]",
+    )
+    normalized = _replace_latex_macro_args(
+        normalized,
+        "Eb",
+        2,
+        lambda args: rf"\mathbb{{E}}_{{{args[0]}}}\left[{args[1]}\right]",
+    )
+    normalized = _replace_latex_macro_args(
+        normalized,
+        "Vara",
+        1,
+        lambda args: rf"\mathrm{{Var}}\left[{args[0]}\right]",
+    )
+    normalized = _replace_latex_macro_args(
+        normalized,
+        "Varb",
+        2,
+        lambda args: rf"\mathrm{{Var}}_{{{args[0]}}}\left[{args[1]}\right]",
+    )
+    normalized = _replace_latex_macro_args(
+        normalized,
+        "kl",
+        2,
+        lambda args: rf"D_{{\mathrm{{KL}}}}\left({args[0]} \| {args[1]}\right)",
+    )
+    normalized = _replace_latex_bold_macros(normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _replace_latex_macro_args(
+    text: str,
+    macro: str,
+    arg_count: int,
+    render: Callable[[list[str]], str],
+) -> str:
+    needle = "\\" + macro
+    result: list[str] = []
+    offset = 0
+    while True:
+        index = text.find(needle, offset)
+        if index < 0:
+            result.append(text[offset:])
+            return "".join(result)
+        next_index = index + len(needle)
+        if next_index < len(text) and text[next_index].isalpha():
+            result.append(text[offset : next_index])
+            offset = next_index
+            continue
+        args: list[str] = []
+        cursor = next_index
+        for _ in range(arg_count):
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
+            parsed = _read_balanced_latex_group(text, cursor)
+            if parsed is None:
+                break
+            value, cursor = parsed
+            args.append(value)
+        if len(args) != arg_count:
+            result.append(text[offset : next_index])
+            offset = next_index
+            continue
+        result.append(text[offset:index])
+        result.append(render(args))
+        offset = cursor
+
+
+def _read_balanced_latex_group(text: str, start: int) -> tuple[str, int] | None:
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == "{" and (index == 0 or text[index - 1] != "\\"):
+            depth += 1
+        elif char == "}" and (index == 0 or text[index - 1] != "\\"):
+            depth -= 1
+            if depth == 0:
+                return text[start + 1 : index], index + 1
+    return None
+
+
+def _replace_latex_bold_macros(text: str) -> str:
+    replacements = {
+        "bzero": r"\mathbf{0}",
+        "bone": r"\mathbf{1}",
+        "btheta": r"\boldsymbol{\theta}",
+        "bphi": r"\boldsymbol{\phi}",
+        "bepsilon": r"\boldsymbol{\epsilon}",
+        "bmu": r"\boldsymbol{\mu}",
+        "bnu": r"\boldsymbol{\nu}",
+        "bSigma": r"\boldsymbol{\Sigma}",
+        "bxh": r"\hat{\mathbf{x}}",
+    }
+    for source, target in sorted(replacements.items(), key=lambda item: -len(item[0])):
+        text = re.sub(
+            rf"\\{source}(?![a-zA-Z])",
+            lambda _match, replacement=target: replacement,
+            text,
+        )
+    text = re.sub(
+        r"\\b([A-Z])(?![a-zA-Z])",
+        lambda match: rf"\mathbf{{{match.group(1)}}}",
+        text,
+    )
+    text = re.sub(
+        r"\\b([a-z])(?![a-zA-Z])",
+        lambda match: rf"\mathbf{{{match.group(1)}}}",
+        text,
+    )
+    return text
