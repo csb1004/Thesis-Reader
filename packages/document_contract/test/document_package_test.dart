@@ -52,6 +52,43 @@ void main() {
     );
   });
 
+  test('package parses conversion metadata and latex equation blocks', () {
+    final package = DocumentPackage.fromJson({
+      'packageVersion': 1,
+      'documentId': 'doc-1',
+      'metadata': {
+        'title': 'DDPM',
+        'sourceFilename': '2006.11239.pdf',
+        'originalPdfSha256': 'abc123',
+      },
+      'conversionMode': 'latex-source',
+      'fallbackReason': null,
+      'sourceInfo': {'arxivId': '2006.11239', 'mainTex': 'main.tex'},
+      'sections': [
+        {
+          'id': 'sec-1',
+          'title': 'Document',
+          'blockIds': ['eq-1'],
+        },
+      ],
+      'blocks': [
+        {
+          'id': 'eq-1',
+          'sectionId': 'sec-1',
+          'kind': 'equation',
+          'latex': r'q(x_t \mid x_0) = \mathcal{N}(x_t; 0, I)',
+          'source': {'mode': 'latex', 'environment': 'equation'},
+        },
+      ],
+      'assets': [],
+    });
+
+    expect(package.conversionMode, 'latex-source');
+    expect(package.sourceInfo?['arxivId'], '2006.11239');
+    expect(package.blocks.single.latex, contains(r'\mathcal'));
+    expect(package.blocks.single.source?['environment'], 'equation');
+  });
+
   test('missing sections throws during json parsing', () {
     final json = minimalPackageJson()..remove('sections');
 

@@ -71,6 +71,8 @@ class DocumentBlock(ContractModel):
     kind: BlockKind
     text: str | None = None
     assetId: str | None = None
+    latex: str | None = None
+    source: dict[str, str | int | float | bool | None] | None = None
     referenceSpans: list[ReferenceSpan] = Field(default_factory=list)
     anchor: ReadingAnchor | None = None
 
@@ -110,6 +112,9 @@ class DocumentPackage(ContractModel):
     sections: list[DocumentSection]
     blocks: list[DocumentBlock]
     assets: list[DocumentAsset]
+    conversionMode: str | None = None
+    fallbackReason: str | None = None
+    sourceInfo: dict[str, str | int | float | bool | None] | None = None
     anchors: list[ReadingAnchor] = Field(default_factory=list)
     vocabulary: list[VocabularyEntry] = Field(default_factory=list)
     summaries: list[SectionSummary] = Field(default_factory=list)

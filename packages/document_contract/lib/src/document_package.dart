@@ -21,6 +21,9 @@ final class DocumentPackage {
     required this.sections,
     required this.blocks,
     required this.assets,
+    this.conversionMode,
+    this.fallbackReason,
+    this.sourceInfo,
     this.anchors = const [],
     this.vocabulary = const [],
     this.summaries = const [],
@@ -48,6 +51,9 @@ final class DocumentPackage {
         'assets',
         DocumentAsset.fromJson,
       ),
+      conversionMode: json['conversionMode'] as String?,
+      fallbackReason: json['fallbackReason'] as String?,
+      sourceInfo: _readOptionalMap(json['sourceInfo']),
       anchors: _readOptionalList(json['anchors'], ReadingAnchor.fromJson),
       vocabulary: _readOptionalList(
         json['vocabulary'],
@@ -63,6 +69,9 @@ final class DocumentPackage {
   final List<DocumentSection> sections;
   final List<DocumentBlock> blocks;
   final List<DocumentAsset> assets;
+  final String? conversionMode;
+  final String? fallbackReason;
+  final Map<String, Object?>? sourceInfo;
   final List<ReadingAnchor> anchors;
   final List<VocabularyEntry> vocabulary;
   final List<SectionSummary> summaries;
@@ -74,6 +83,9 @@ final class DocumentPackage {
     'sections': sections.map((section) => section.toJson()).toList(),
     'blocks': blocks.map((block) => block.toJson()).toList(),
     'assets': assets.map((asset) => asset.toJson()).toList(),
+    'conversionMode': conversionMode,
+    'fallbackReason': fallbackReason,
+    'sourceInfo': sourceInfo,
     'anchors': anchors.map((anchor) => anchor.toJson()).toList(),
     'vocabulary': vocabulary.map((entry) => entry.toJson()).toList(),
     'summaries': summaries.map((summary) => summary.toJson()).toList(),
@@ -151,6 +163,8 @@ final class DocumentBlock {
     required this.kind,
     this.text,
     this.assetId,
+    this.latex,
+    this.source,
     this.referenceSpans = const [],
     this.anchor,
   });
@@ -177,6 +191,8 @@ final class DocumentBlock {
       kind: _enumFromName(BlockKind.values, json['kind']! as String),
       text: json['text'] as String?,
       assetId: json['assetId'] as String?,
+      latex: json['latex'] as String?,
+      source: _readOptionalMap(json['source']),
       referenceSpans: _readOptionalList(
         json['referenceSpans'],
         ReferenceSpan.fromJson,
@@ -190,6 +206,8 @@ final class DocumentBlock {
   final BlockKind kind;
   final String? text;
   final String? assetId;
+  final String? latex;
+  final Map<String, Object?>? source;
   final List<ReferenceSpan> referenceSpans;
   final ReadingAnchor? anchor;
 
@@ -199,6 +217,8 @@ final class DocumentBlock {
     'kind': kind.name,
     'text': text,
     'assetId': assetId,
+    'latex': latex,
+    'source': source,
     'referenceSpans': referenceSpans.map((span) => span.toJson()).toList(),
     'anchor': anchor?.toJson(),
   };
@@ -435,4 +455,8 @@ List<String> _readRequiredStringList(Object? value, String fieldName) {
 
 List<String> _readOptionalStringList(Object? value) {
   return (value as List<Object?>? ?? const []).cast<String>();
+}
+
+Map<String, Object?>? _readOptionalMap(Object? value) {
+  return (value as Map<Object?, Object?>?)?.cast<String, Object?>();
 }

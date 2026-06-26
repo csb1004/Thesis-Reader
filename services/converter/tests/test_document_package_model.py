@@ -66,6 +66,44 @@ def test_minimal_document_package_serializes_to_contract_keys():
     assert payload["blocks"][0]["kind"] == "paragraph"
 
 
+def test_document_package_serializes_conversion_metadata_and_latex_block():
+    package = DocumentPackage(
+        packageVersion=1,
+        documentId="doc-1",
+        metadata=DocumentMetadata(
+            title="Denoising Diffusion Probabilistic Models",
+            sourceFilename="2006.11239.pdf",
+            originalPdfSha256="abc123",
+            converterVersion="mvp-2",
+        ),
+        conversionMode="latex-source",
+        fallbackReason=None,
+        sourceInfo={"arxivId": "2006.11239", "mainTex": "main.tex"},
+        sections=[DocumentSection(id="sec-1", title="Document", blockIds=["eq-1"])],
+        blocks=[
+            DocumentBlock(
+                id="eq-1",
+                sectionId="sec-1",
+                kind=BlockKind.equation,
+                latex=(
+                    r"q(x_t \mid x_0) = \mathcal{N}"
+                    r"(x_t; \sqrt{\bar\alpha_t}x_0, (1-\bar\alpha_t)I)"
+                ),
+                source={"mode": "latex", "environment": "equation"},
+            )
+        ],
+        assets=[],
+    )
+
+    payload = package.model_dump(mode="json")
+
+    assert payload["conversionMode"] == "latex-source"
+    assert payload["fallbackReason"] is None
+    assert payload["sourceInfo"]["arxivId"] == "2006.11239"
+    assert payload["blocks"][0]["latex"].startswith("q(x_t")
+    assert payload["blocks"][0]["source"]["environment"] == "equation"
+
+
 def test_document_package_rejects_unexpected_fields():
     with pytest.raises(ValidationError):
         DocumentPackage(
