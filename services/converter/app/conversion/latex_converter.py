@@ -3,9 +3,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from services.converter.app.conversion.equation_renderer import (
+    render_latex_equation_asset,
+)
 from services.converter.app.conversion.package_writer import write_document_package
 from services.converter.app.models.document_package import (
+    AssetKind,
     BlockKind,
+    DocumentAsset,
     DocumentBlock,
     DocumentMetadata,
     DocumentPackage,
@@ -40,6 +45,7 @@ def convert_latex_source_to_package(
     blocks = _extract_blocks(body)
     if not blocks:
         raise ValueError("LaTeX source produced no reader blocks")
+    blocks, assets = _attach_equation_assets(blocks, output_dir)
 
     section_id = "sec-1"
     anchored = [
@@ -72,11 +78,49 @@ def convert_latex_source_to_package(
             )
         ],
         blocks=anchored,
-        assets=[],
+        assets=assets,
         anchors=[block.anchor for block in anchored if block.anchor is not None],
     )
     write_document_package(package, output_dir)
     return package
+
+
+def _attach_equation_assets(
+    blocks: list[DocumentBlock],
+    output_dir: Path,
+) -> tuple[list[DocumentBlock], list[DocumentAsset]]:
+    assets: list[DocumentAsset] = []
+    updated_blocks: list[DocumentBlock] = []
+
+    for block in blocks:
+        if block.kind != BlockKind.equation or not block.latex:
+            updated_blocks.append(block)
+            continue
+
+        equation_number = len(assets) + 1
+        asset = DocumentAsset(
+            id=f"eq-{equation_number}",
+            kind=AssetKind.equation,
+            label=f"Equation {equation_number}",
+            relativePath=f"assets/eq-{equation_number}.png",
+        )
+        render_mode = render_latex_equation_asset(
+            block.latex,
+            output_dir / asset.relativePath,
+            environment=(block.source or {}).get("environment"),
+        )
+        source = {
+            **(block.source or {}),
+            "mode": "latex-asset",
+            "assetId": asset.id,
+            "renderMode": render_mode,
+        }
+        assets.append(asset)
+        updated_blocks.append(
+            block.model_copy(update={"assetId": asset.id, "source": source})
+        )
+
+    return updated_blocks, assets
 
 
 def _extract_blocks(body: str) -> list[DocumentBlock]:

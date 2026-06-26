@@ -475,6 +475,29 @@ void main() {
     );
   });
 
+  testWidgets('prefers equation assets over client-side latex rendering', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithEquationAsset(
+            '/tmp/equation.png',
+            latex: r'\unsupportedPaperMacro{x}',
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('reader-inline-asset-equation-1')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('reader-latex-equation-eq-block')), findsNothing);
+    expect(find.textContaining('Parser Error'), findsNothing);
+  });
+
   testWidgets('renders latex equation blocks instead of fallback asset label', (
     tester,
   ) async {
@@ -733,7 +756,7 @@ DocumentPackage _packageWithBlocks(List<String> texts) {
   );
 }
 
-DocumentPackage _packageWithEquationAsset(String equationPath) {
+DocumentPackage _packageWithEquationAsset(String equationPath, {String? latex}) {
   return DocumentPackage(
     packageVersion: 1,
     documentId: 'doc-1',
@@ -745,12 +768,13 @@ DocumentPackage _packageWithEquationAsset(String equationPath) {
     sections: const [
       DocumentSection(id: 's1', title: 'Body', blockIds: ['eq-block']),
     ],
-    blocks: const [
+    blocks: [
       DocumentBlock(
         id: 'eq-block',
         sectionId: 's1',
         kind: BlockKind.equation,
         assetId: 'equation-1',
+        latex: latex,
       ),
     ],
     assets: [

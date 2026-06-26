@@ -180,3 +180,42 @@ q(\bx_t \mid \bx_0) = \mathcal{N}(\bx_t; \sqrt{\bar\alpha_t}\bx_0, (1-\bar\alpha
     assert r"\mathbf{I}" in latex
     assert r"\mathbb{E}" in latex
     assert ":= L" in latex
+
+
+def test_renders_latex_equations_as_package_assets(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Denoising Diffusion Probabilistic Models}
+\begin{document}
+\section{Background}
+Training is performed by optimizing the variational bound:
+\begin{align}
+\Ea{-\log p_\theta(\bx_0)} \leq \Eb{q}{ - \log \frac{p_\theta(\bx_{0:T})}{q(\bx_{1:T} | \bx_0)}}
+\end{align}
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "out"
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=output_dir,
+        document_id="doc-1",
+        source_filename="2006.11239.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "2006.11239", "mainTex": "main.tex"},
+    )
+
+    equations = [block for block in package.blocks if block.kind == BlockKind.equation]
+    assert len(equations) == 1
+    assert equations[0].assetId == "eq-1"
+    assert equations[0].source["mode"] == "latex-asset"
+
+    assets = [asset for asset in package.assets if asset.id == equations[0].assetId]
+    assert len(assets) == 1
+    assert assets[0].kind == "equation"
+    assert assets[0].relativePath == "assets/eq-1.png"
+    assert (output_dir / assets[0].relativePath).read_bytes().startswith(b"\x89PNG")

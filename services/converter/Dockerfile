@@ -6,6 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        texlive-fonts-recommended \
+        texlive-latex-base \
+        texlive-latex-extra \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY services/converter/requirements.txt services/converter/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r services/converter/requirements.txt

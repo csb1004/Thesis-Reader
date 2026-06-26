@@ -1109,13 +1109,32 @@ final class _ReaderBlock extends StatelessWidget {
       color: readerTheme.textColor,
     );
 
+    final asset = block.assetId == null ? null : assetsById[block.assetId];
+    if (asset != null &&
+        {
+          BlockKind.equation,
+          BlockKind.figure,
+          BlockKind.table,
+        }.contains(block.kind)) {
+      return Padding(
+        key: Key('reader-inline-asset-${asset.id}'),
+        padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onAssetPressed(asset),
+          child: _InlineAssetPreview(asset: asset, readerTheme: readerTheme),
+        ),
+      );
+    }
+
     final latex = block.latex;
     if (block.kind == BlockKind.equation && latex != null) {
       return Padding(
         key: Key('reader-latex-equation-${block.id}'),
         padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
           child: Math.tex(
             latex,
             textStyle: textStyle.copyWith(
@@ -1153,24 +1172,6 @@ final class _ReaderBlock extends StatelessWidget {
           onSimpleTranslateSelection: onSimpleTranslateSelection,
           onTranslateSelection: onTranslateSelection,
           onAddVocabulary: onAddVocabulary,
-        ),
-      );
-    }
-
-    final asset = block.assetId == null ? null : assetsById[block.assetId];
-    if (asset != null &&
-        {
-          BlockKind.equation,
-          BlockKind.figure,
-          BlockKind.table,
-        }.contains(block.kind)) {
-      return Padding(
-        key: Key('reader-inline-asset-${asset.id}'),
-        padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onAssetPressed(asset),
-          child: _InlineAssetPreview(asset: asset, readerTheme: readerTheme),
         ),
       );
     }
@@ -1243,13 +1244,19 @@ final class _InlineAssetPreview extends StatelessWidget {
         constraints: BoxConstraints(
           maxHeight: _inlineAssetMaxHeight(asset.kind),
         ),
-        child: Image.file(
-          file,
-          fit: BoxFit.contain,
-          alignment: Alignment.centerLeft,
-          errorBuilder: (context, error, stackTrace) {
-            return _InlineAssetFallback(asset: asset, readerTheme: readerTheme);
-          },
+        child: SizedBox(
+          width: double.infinity,
+          child: Image.file(
+            file,
+            fit: BoxFit.contain,
+            alignment: Alignment.centerLeft,
+            errorBuilder: (context, error, stackTrace) {
+              return _InlineAssetFallback(
+                asset: asset,
+                readerTheme: readerTheme,
+              );
+            },
+          ),
         ),
       );
     }
