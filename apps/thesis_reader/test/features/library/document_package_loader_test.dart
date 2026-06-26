@@ -229,4 +229,51 @@ void main() {
       );
     },
   );
+
+  test('preserves conversion metadata and latex block fields', () async {
+    final temp = await Directory.systemTemp.createTemp('package_loader_test');
+    final packageFile = File(
+      p.join(temp.path, 'packages', 'doc-1', 'package.json'),
+    );
+    await packageFile.parent.create(recursive: true);
+    await packageFile.writeAsString(
+      jsonEncode({
+        'packageVersion': 1,
+        'documentId': 'doc-1',
+        'conversionMode': 'latex-source',
+        'sourceInfo': {'arxivId': '2006.11239'},
+        'metadata': {
+          'title': 'DDPM',
+          'sourceFilename': '2006.11239.pdf',
+          'originalPdfSha256': 'abc123',
+        },
+        'sections': [
+          {
+            'id': 'sec-1',
+            'title': 'Document',
+            'blockIds': ['eq-1'],
+          },
+        ],
+        'blocks': [
+          {
+            'id': 'eq-1',
+            'sectionId': 'sec-1',
+            'kind': 'equation',
+            'latex': r'q(x_t \mid x_0) = \mathcal{N}(x_t; 0, I)',
+          },
+        ],
+        'assets': [],
+      }),
+    );
+
+    final loaded = await DocumentPackageLoader.load(
+      documentId: 'doc-1',
+      appDirectory: temp,
+      storedPackagePath: null,
+    );
+
+    expect(loaded?.package.conversionMode, 'latex-source');
+    expect(loaded?.package.sourceInfo?['arxivId'], '2006.11239');
+    expect(loaded?.package.blocks.single.latex, contains(r'\mathcal'));
+  });
 }
