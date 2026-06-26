@@ -475,6 +475,28 @@ void main() {
     );
   });
 
+  testWidgets('renders latex equation blocks instead of fallback asset label', (
+    tester,
+  ) async {
+    final package = _packageWithCustomBlocks([
+      const DocumentBlock(
+        id: 'eq-1',
+        sectionId: 's1',
+        kind: BlockKind.equation,
+        latex: r'q(x_t \mid x_0) = \mathcal{N}(x_t; 0, I)',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    expect(find.byKey(const Key('reader-latex-equation-eq-1')), findsOneWidget);
+    expect(find.text('eq-1'), findsNothing);
+  });
+
   testWidgets('renders table asset blocks inline', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -611,6 +633,27 @@ void main() {
     expect(heading.style?.fontSize, greaterThan((body.style?.fontSize)!));
     expect(heading.style?.fontWeight, FontWeight.w700);
   });
+}
+
+DocumentPackage _packageWithCustomBlocks(List<DocumentBlock> blocks) {
+  return DocumentPackage(
+    packageVersion: 1,
+    documentId: 'doc-1',
+    metadata: const DocumentMetadata(
+      title: 'Reader Test',
+      sourceFilename: 'reader.pdf',
+      originalPdfSha256: 'abc123',
+    ),
+    sections: [
+      DocumentSection(
+        id: 's1',
+        title: 'Body',
+        blockIds: blocks.map((block) => block.id).toList(),
+      ),
+    ],
+    blocks: blocks,
+    assets: const [],
+  );
 }
 
 DocumentPackage _packageWithBlocks(List<String> texts) {

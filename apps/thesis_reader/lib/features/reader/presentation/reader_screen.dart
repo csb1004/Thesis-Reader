@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:thesis_reader/features/ai/data/openai_client.dart';
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
@@ -868,6 +869,8 @@ DocumentBlock _blockForPageItem(DocumentBlock block, ReaderPageItem item) {
     kind: block.kind,
     text: item.text,
     assetId: block.assetId,
+    latex: block.latex,
+    source: block.source,
     referenceSpans: [
       for (final span in block.referenceSpans)
         if (span.end > startOffset && span.start < endOffset)
@@ -1105,6 +1108,23 @@ final class _ReaderBlock extends StatelessWidget {
       height: settings.lineHeight,
       color: readerTheme.textColor,
     );
+
+    final latex = block.latex;
+    if (block.kind == BlockKind.equation && latex != null) {
+      return Padding(
+        key: Key('reader-latex-equation-${block.id}'),
+        padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            latex,
+            textStyle: textStyle.copyWith(
+              fontSize: (textStyle.fontSize ?? 16) * 1.05,
+            ),
+          ),
+        ),
+      );
+    }
 
     if (block.text case final text?) {
       final isHeading = _looksLikeHeading(text);
