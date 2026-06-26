@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from services.converter.app.conversion.pdf_converter import convert_pdf_to_package
+from services.converter.app.conversion.document_converter import convert_document_to_package
 from services.converter.app.jobs.models import JobSnapshot, JobStatus
 
 
@@ -53,7 +53,7 @@ class JobStore:
 
         self._jobs[job_id] = JobSnapshot(jobId=job_id, status=JobStatus.processing)
         try:
-            convert_pdf_to_package(
+            convert_document_to_package(
                 pdf_path=self.source_path(job_id),
                 output_dir=self.package_dir(job_id),
                 document_id=job_id,
