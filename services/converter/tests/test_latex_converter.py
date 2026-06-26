@@ -182,6 +182,39 @@ q(\bx_t \mid \bx_0) = \mathcal{N}(\bx_t; \sqrt{\bar\alpha_t}\bx_0, (1-\bar\alpha
     assert ":= L" in latex
 
 
+def test_normalizes_accented_ddpm_bold_macros_for_tex_rendering(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Denoising Diffusion Probabilistic Models}
+\begin{document}
+\section{Background}
+\begin{align}
+q(\bx_{t-1} \mid \bx_t, \bx_0) &= \mathcal{N}
+(\bx_{t-1}; \tilde\bmu_t(\bx_t, \bx_0), \tilde\beta_t \bI)
+\end{align}
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="2006.11239.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "2006.11239", "mainTex": "main.tex"},
+    )
+
+    latex = "\n".join(
+        block.latex or "" for block in package.blocks if block.kind == BlockKind.equation
+    )
+    assert r"\tilde\boldsymbol" not in latex
+    assert r"\tilde{\boldsymbol{\mu}}" in latex
+
+
 def test_renders_latex_equations_as_package_assets(tmp_path):
     main_tex = tmp_path / "main.tex"
     main_tex.write_text(

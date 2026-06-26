@@ -605,6 +605,7 @@ def _normalize_display_latex(text: str) -> str:
         lambda args: rf"D_{{\mathrm{{KL}}}}\left({args[0]} \| {args[1]}\right)",
     )
     normalized = _replace_latex_bold_macros(normalized)
+    normalized = _wrap_accented_latex_macros(normalized)
     return re.sub(r"\s+", " ", normalized).strip()
 
 
@@ -689,4 +690,26 @@ def _replace_latex_bold_macros(text: str) -> str:
         lambda match: rf"\mathbf{{{match.group(1)}}}",
         text,
     )
+    return text
+
+
+def _wrap_accented_latex_macros(text: str) -> str:
+    accent_commands = (
+        "bar",
+        "hat",
+        "tilde",
+        "vec",
+        "dot",
+        "ddot",
+        "widehat",
+        "widetilde",
+    )
+    styled_commands = ("boldsymbol", "mathbf", "mathrm", "mathcal", "mathbb")
+    for accent in accent_commands:
+        for styled in styled_commands:
+            text = re.sub(
+                rf"\\{accent}\\{styled}\{{([^{{}}]+)\}}",
+                rf"\\{accent}{{\\{styled}{{\1}}}}",
+                text,
+            )
     return text

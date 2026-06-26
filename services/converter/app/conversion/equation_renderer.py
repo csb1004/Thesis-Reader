@@ -1,7 +1,6 @@
 import shutil
 import subprocess
 import tempfile
-import textwrap
 from pathlib import Path
 
 import fitz
@@ -71,7 +70,7 @@ def _render_with_pdflatex(
 
 def _equation_document(latex: str, environment: str | None) -> str:
     return rf"""
-\documentclass[varwidth=true,border=3pt]{{standalone}}
+\documentclass[varwidth=1600pt,border=12pt]{{standalone}}
 \usepackage{{amsmath}}
 \usepackage{{amssymb}}
 \usepackage{{bm}}
@@ -101,11 +100,13 @@ def _display_environment(environment: str | None) -> str:
     return "displaymath"
 
 
-def _render_fallback_png(latex: str, target_path: Path) -> None:
+def _render_fallback_png(_latex: str, target_path: Path) -> None:
     font = _fallback_font()
     padding = 28
-    lines = ["Equation preview unavailable", ""]
-    lines.extend(textwrap.wrap(_fallback_latex_text(latex), width=78) or [""])
+    lines = [
+        "Equation preview unavailable",
+        "Open the original PDF or reconvert after the server finishes deploying.",
+    ]
     text = "\n".join(lines)
 
     measure_image = Image.new("RGB", (1, 1), "white")
@@ -133,8 +134,3 @@ def _fallback_font() -> ImageFont.ImageFont:
         except OSError:
             continue
     return ImageFont.load_default()
-
-
-def _fallback_latex_text(latex: str) -> str:
-    compact = " ".join(latex.split())
-    return compact if len(compact) <= 900 else f"{compact[:900]}..."
