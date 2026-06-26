@@ -475,7 +475,7 @@ void main() {
     );
   });
 
-  testWidgets('renders equation assets in a horizontal readable preview', (
+  testWidgets('fits equation assets into the inline reader width', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -488,8 +488,12 @@ void main() {
     );
 
     expect(
-      find.byKey(const Key('reader-inline-equation-scroll-equation-1')),
+      find.byKey(const Key('reader-inline-equation-fit-equation-1')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('reader-inline-equation-scroll-equation-1')),
+      findsNothing,
     );
   });
 

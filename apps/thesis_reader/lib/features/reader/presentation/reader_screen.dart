@@ -1289,38 +1289,26 @@ final class _InlineEquationPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SizedBox(
-          width: double.infinity,
-          child: SingleChildScrollView(
-            key: Key('reader-inline-equation-scroll-${asset.id}'),
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: isImage && file.existsSync()
-                    ? Image.file(
-                        file,
-                        height: 92,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return _InlineAssetFallback(
-                            asset: asset,
-                            readerTheme: readerTheme,
-                          );
-                        },
-                      )
-                    : _InlineAssetFallback(
-                        asset: asset,
-                        readerTheme: readerTheme,
-                      ),
-              ),
-            ),
-          ),
-        );
-      },
+    return SizedBox(
+      width: double.infinity,
+      child: FittedBox(
+        key: Key('reader-inline-equation-fit-${asset.id}'),
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: isImage && file.existsSync()
+            ? Image.file(
+                file,
+                height: 92,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return _InlineAssetFallback(
+                    asset: asset,
+                    readerTheme: readerTheme,
+                  );
+                },
+              )
+            : _InlineAssetFallback(asset: asset, readerTheme: readerTheme),
+      ),
     );
   }
 }
