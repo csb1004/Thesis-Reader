@@ -340,8 +340,173 @@ def _figure_text(text: str) -> str:
 def _clean_text(text: str) -> str:
     cleaned = text.replace("~", " ")
     cleaned = re.sub(r"\\(?:maketitle|begin\{abstract\}|end\{abstract\})", " ", cleaned)
-    cleaned = re.sub(r"\\cite\{([^}]+)\}", r"[\1]", cleaned)
+    cleaned = _replace_citations(cleaned)
+    cleaned = _replace_references(cleaned)
+    cleaned = _replace_inline_math(cleaned)
+    cleaned = re.sub(r"\\label\{[^}]+\}", " ", cleaned)
     cleaned = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]+\])?\{([^{}]*)\}", r"\1", cleaned)
     cleaned = re.sub(r"\\[a-zA-Z]+\*?", " ", cleaned)
     cleaned = cleaned.replace("{", "").replace("}", "")
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _replace_citations(text: str) -> str:
+    citation_commands = (
+        "cite",
+        "citep",
+        "citet",
+        "citealp",
+        "citealt",
+        "citeauthor",
+        "citeyear",
+        "citeyearpar",
+    )
+    pattern = re.compile(
+        rf"\\(?:{'|'.join(citation_commands)})(?:\[[^\]]*\]){{0,2}}\{{(?P<keys>[^}}]+)\}}"
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        keys = [key.strip() for key in match.group("keys").split(",") if key.strip()]
+        return f"[{', '.join(keys)}]" if keys else ""
+
+    return pattern.sub(replace, text)
+
+
+def _replace_references(text: str) -> str:
+    pattern = re.compile(
+        r"\\(?P<command>eqref|labelcref|cref|Cref|autoref|ref)(?:\[[^\]]*\])?\{(?P<labels>[^}]+)\}"
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        command = match.group("command")
+        labels = [
+            _human_readable_reference_label(command, label.strip())
+            for label in match.group("labels").split(",")
+            if label.strip()
+        ]
+        return ", ".join(labels)
+
+    return pattern.sub(replace, text)
+
+
+def _human_readable_reference_label(command: str, label: str) -> str:
+    prefix, _, body = label.partition(":")
+    cleaned_body = (body or prefix).replace("_", " ").replace("-", " ").strip()
+    prefix_name = {
+        "alg": "Algorithm",
+        "algorithm": "Algorithm",
+        "eq": "Equation",
+        "equation": "Equation",
+        "fig": "Figure",
+        "figure": "Figure",
+        "sec": "Section",
+        "section": "Section",
+        "tab": "Table",
+        "table": "Table",
+    }.get(prefix.lower())
+    if command == "eqref":
+        prefix_name = "Equation"
+    return f"{prefix_name} {cleaned_body}" if prefix_name else cleaned_body
+
+
+def _replace_inline_math(text: str) -> str:
+    text = re.sub(
+        r"\\\((?P<value>.*?)\\\)",
+        lambda match: _inline_math_text(match.group("value")),
+        text,
+        flags=re.DOTALL,
+    )
+    return re.sub(
+        r"(?<!\\)\$(?!\$)(?P<value>.*?)(?<!\\)\$",
+        lambda match: _inline_math_text(match.group("value")),
+        text,
+        flags=re.DOTALL,
+    )
+
+
+def _inline_math_text(text: str) -> str:
+    cleaned = text.strip()
+    cleaned = cleaned.replace(r"\,", " ")
+    cleaned = cleaned.replace(r"\;", " ")
+    cleaned = cleaned.replace(r"\!", "")
+    cleaned = re.sub(r"\\(?:left|right|big|Big|bigl|bigr|Bigl|Bigr)", "", cleaned)
+
+    for _ in range(4):
+        cleaned = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", cleaned)
+        cleaned = re.sub(r"\\sqrt\{([^{}]+)\}", r"sqrt(\1)", cleaned)
+        cleaned = re.sub(
+            r"\\(?:mathrm|mathbf|mathcal|mathbb|text|operatorname)\{([^{}]+)\}",
+            r"\1",
+            cleaned,
+        )
+        cleaned = re.sub(r"\\bar\{\\?([a-zA-Z]+)\}", r"\1_bar", cleaned)
+        cleaned = re.sub(r"\\bar\s*\\([a-zA-Z]+)", r"\1_bar", cleaned)
+        cleaned = re.sub(
+            r"_\{([^{}]+)\}",
+            lambda match: f"_{_script_text(match.group(1))}",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"\^\{([^{}]+)\}",
+            lambda match: f"^{_script_text(match.group(1))}",
+            cleaned,
+        )
+
+    replacements = {
+        r"\bSigma": "Sigma",
+        r"\btheta": "theta",
+        r"\balpha": "alpha",
+        r"\bbeta": "beta",
+        r"\bepsilon": "epsilon",
+        r"\bmu": "mu",
+        r"\bzero": "0",
+        r"\bI": "I",
+        r"\bx": "x",
+        r"\alpha": "alpha",
+        r"\beta": "beta",
+        r"\theta": "theta",
+        r"\epsilon": "epsilon",
+        r"\varepsilon": "epsilon",
+        r"\mu": "mu",
+        r"\sigma": "sigma",
+        r"\Sigma": "Sigma",
+        r"\mathcal": "",
+        r"\mathbb": "",
+        r"\defeq": ":=",
+        r"\prod": "prod",
+        r"\sum": "sum",
+        r"\log": "log",
+        r"\mid": "|",
+        r"\vert": "|",
+        r"\lVert": "||",
+        r"\rVert": "||",
+        r"\times": "x",
+        r"\cdot": "*",
+        r"\sim": "~",
+        r"\leq": "<=",
+        r"\geq": ">=",
+        r"\neq": "!=",
+        r"\dotsc": "...",
+        r"\dots": "...",
+    }
+    for source, target in sorted(replacements.items(), key=lambda item: -len(item[0])):
+        cleaned = cleaned.replace(source, target)
+
+    cleaned = re.sub(
+        r"\\([a-zA-Z]+)\*?",
+        lambda match: match.group(1)[1:] if match.group(1).startswith("b") else match.group(1),
+        cleaned,
+    )
+    cleaned = cleaned.replace(r"\{", "{").replace(r"\}", "}")
+    cleaned = cleaned.replace("{", "").replace("}", "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s*([_=+\-/:<>|])\s*", r"\1", cleaned)
+    cleaned = re.sub(r"\s*([(),;])\s*", r"\1", cleaned)
+    return cleaned
+
+
+def _script_text(text: str) -> str:
+    compact = text.strip()
+    if len(compact) > 1 and re.search(r"[=+\-/*, ]", compact):
+        return f"({compact})"
+    return compact

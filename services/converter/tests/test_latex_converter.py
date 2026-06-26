@@ -91,3 +91,48 @@ L &= D_{KL}(q(x_T \mid x_0) \| p(x_T)) \\
     assert "LT" not in body_text
     assert "L0" not in body_text
     assert "l{z}" not in body_text
+
+
+def test_cleans_ddpm_inline_math_citations_and_refs(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Denoising Diffusion Probabilistic Models}
+\begin{document}
+\section{Background}
+The forward process variances $\beta_t$ can be learned by reparameterization
+\citep{kingma2013auto} or held constant as hyperparameters. A notable property
+admits sampling $\bx_t$ at an arbitrary timestep $t$ in closed form: using the
+notation $\alpha_t\defeq1-\beta_t$ and $\bar\alpha_t\defeq\prod_{s=1}^t \alpha_s$, we have
+\begin{equation}
+q(\bx_t \mid \bx_0) = \mathcal{N}(\bx_t; \sqrt{\bar\alpha_t}\bx_0, (1-\bar\alpha_t)\bI)
+\end{equation}
+Efficient training is therefore possible by optimizing random terms of $L$ with
+stochastic gradient descent. Further improvements come from rewriting $L$
+\labelcref{eq:vb_original} as:
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="2006.11239.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "2006.11239", "mainTex": "main.tex"},
+    )
+
+    body_text = " ".join(block.text or "" for block in package.blocks)
+    assert "$" not in body_text
+    assert r"\citep" not in body_text
+    assert r"\eqref" not in body_text
+    assert r"\labelcref" not in body_text
+    assert "_t$" not in body_text
+    assert "beta_t can be learned by reparameterization [kingma2013auto]" in body_text
+    assert "sampling x_t at an arbitrary timestep t" in body_text
+    assert "alpha_t:=1-beta_t" in body_text
+    assert "prod_(s=1)^t alpha_s" in body_text
+    assert "Equation vb original" in body_text
