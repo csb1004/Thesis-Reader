@@ -710,6 +710,19 @@ def test_equation_clip_bounds_trim_overlapping_prose_rects_from_top():
     assert lines[1]["_clipTop"] == 705.4
 
 
+def test_normalizes_pdf_extracted_plain_math_text():
+    assert (
+        pdf_converter._normalize_extracted_text(
+            "using theta, sqrt(d_k), 10^(9), and 2pi wavelengths"
+        )
+        == "using θ, √dₖ, 10⁹, and 2π wavelengths"
+    )
+    assert (
+        pdf_converter._normalize_extracted_text("from 2pi to 10000 * 2pi")
+        == "from 2π to 10000 * 2π"
+    )
+
+
 def test_asset_image_source_prefers_block_anchor_over_earlier_reference():
     asset = DocumentAsset(
         id="table-3",

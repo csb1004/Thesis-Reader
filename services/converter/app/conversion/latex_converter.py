@@ -6,6 +6,7 @@ from pathlib import Path
 from services.converter.app.conversion.equation_renderer import (
     render_latex_equation_asset,
 )
+from services.converter.app.conversion.math_text import latex_to_readable_math_text
 from services.converter.app.conversion.package_writer import write_document_package
 from services.converter.app.models.document_package import (
     AssetKind,
@@ -470,91 +471,7 @@ def _replace_inline_math(text: str) -> str:
 
 
 def _inline_math_text(text: str) -> str:
-    cleaned = text.strip()
-    cleaned = cleaned.replace(r"\,", " ")
-    cleaned = cleaned.replace(r"\;", " ")
-    cleaned = cleaned.replace(r"\!", "")
-    cleaned = re.sub(r"\\(?:left|right|big|Big|bigl|bigr|Bigl|Bigr)", "", cleaned)
-
-    for _ in range(4):
-        cleaned = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", cleaned)
-        cleaned = re.sub(r"\\sqrt\{([^{}]+)\}", r"sqrt(\1)", cleaned)
-        cleaned = re.sub(
-            r"\\(?:mathrm|mathbf|mathcal|mathbb|text|operatorname)\{([^{}]+)\}",
-            r"\1",
-            cleaned,
-        )
-        cleaned = re.sub(r"\\bar\{\\?([a-zA-Z]+)\}", r"\1_bar", cleaned)
-        cleaned = re.sub(r"\\bar\s*\\([a-zA-Z]+)", r"\1_bar", cleaned)
-        cleaned = re.sub(
-            r"_\{([^{}]+)\}",
-            lambda match: f"_{_script_text(match.group(1))}",
-            cleaned,
-        )
-        cleaned = re.sub(
-            r"\^\{([^{}]+)\}",
-            lambda match: f"^{_script_text(match.group(1))}",
-            cleaned,
-        )
-
-    replacements = {
-        r"\bSigma": "Sigma",
-        r"\btheta": "theta",
-        r"\balpha": "alpha",
-        r"\bbeta": "beta",
-        r"\bepsilon": "epsilon",
-        r"\bmu": "mu",
-        r"\bzero": "0",
-        r"\bI": "I",
-        r"\bx": "x",
-        r"\alpha": "alpha",
-        r"\beta": "beta",
-        r"\theta": "theta",
-        r"\epsilon": "epsilon",
-        r"\varepsilon": "epsilon",
-        r"\mu": "mu",
-        r"\sigma": "sigma",
-        r"\Sigma": "Sigma",
-        r"\mathcal": "",
-        r"\mathbb": "",
-        r"\defeq": ":=",
-        r"\prod": "prod",
-        r"\sum": "sum",
-        r"\log": "log",
-        r"\mid": "|",
-        r"\vert": "|",
-        r"\lVert": "||",
-        r"\rVert": "||",
-        r"\times": "x",
-        r"\cdot": "*",
-        r"\sim": "~",
-        r"\leq": "<=",
-        r"\geq": ">=",
-        r"\neq": "!=",
-        r"\dotsc": "...",
-        r"\dots": "...",
-    }
-    for source, target in sorted(replacements.items(), key=lambda item: -len(item[0])):
-        cleaned = cleaned.replace(source, target)
-
-    cleaned = re.sub(
-        r"\\([a-zA-Z]+)\*?",
-        lambda match: match.group(1)[1:] if match.group(1).startswith("b") else match.group(1),
-        cleaned,
-    )
-    cleaned = cleaned.replace(r"\{", "{").replace(r"\}", "}")
-    cleaned = cleaned.replace("{", "").replace("}", "")
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    cleaned = re.sub(r"\s*([_=+\-/:<>|])\s*", r"\1", cleaned)
-    cleaned = re.sub(r"\s*([(),;])\s*", r"\1", cleaned)
-    return cleaned
-
-
-def _script_text(text: str) -> str:
-    compact = text.strip()
-    if len(compact) > 1 and re.search(r"[=+\-/*, ]", compact):
-        return f"({compact})"
-    return compact
+    return latex_to_readable_math_text(text)
 
 
 def _normalize_display_latex(text: str) -> str:

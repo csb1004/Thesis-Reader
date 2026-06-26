@@ -131,10 +131,10 @@ stochastic gradient descent. Further improvements come from rewriting $L$
     assert r"\eqref" not in body_text
     assert r"\labelcref" not in body_text
     assert "_t$" not in body_text
-    assert "beta_t can be learned by reparameterization [kingma2013auto]" in body_text
-    assert "sampling x_t at an arbitrary timestep t" in body_text
-    assert "alpha_t:=1-beta_t" in body_text
-    assert "prod_(s=1)^t alpha_s" in body_text
+    assert "βₜ can be learned by reparameterization [kingma2013auto]" in body_text
+    assert "sampling xₜ at an arbitrary timestep t" in body_text
+    assert "αₜ:=1-βₜ" in body_text
+    assert "∏ₛ₌₁ᵗ αₛ" in body_text
     assert "Equation vb original" in body_text
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import fitz
 
+from services.converter.app.conversion.math_text import normalize_readable_math_fragments
 from services.converter.app.conversion.package_writer import write_document_package
 from services.converter.app.models.document_package import (
     AssetKind,
@@ -816,10 +817,23 @@ def _normalize_extracted_text(text: str) -> str:
 
 
 def _normalize_math_text(text: str) -> str:
-    return re.sub(
+    normalized = re.sub(
         r"Attention\(\s*Q\s*,\s*K\s*,\s*V\s*\)\s*=\s*softmax\(\s*Q\s*K\s*T\s*/?\s*√\s*d\s*_?\s*k\s*\)\s*V",
         "Attention(Q, K, V) = softmax(QK^T / √d_k) V",
         text,
+    )
+    if _contains_pdf_extracted_math_text(normalized):
+        normalized = normalize_readable_math_fragments(normalized)
+    return normalized
+
+
+def _contains_pdf_extracted_math_text(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:alpha|beta|gamma|theta|lambda|mu|sigma|sqrt|pi)\b|"
+            r"\b\w+_\w+\b|\d+\^\(?[A-Za-z0-9+\-=]+\)?|\d+pi\b",
+            text,
+        )
     )
 
 

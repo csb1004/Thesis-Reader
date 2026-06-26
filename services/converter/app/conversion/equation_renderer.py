@@ -6,6 +6,8 @@ from pathlib import Path
 import fitz
 from PIL import Image, ImageDraw, ImageFont
 
+from services.converter.app.conversion.math_text import latex_to_readable_math_text
+
 
 def render_latex_equation_asset(
     latex: str,
@@ -101,13 +103,10 @@ def _display_environment(environment: str | None) -> str:
     return "displaymath"
 
 
-def _render_fallback_png(_latex: str, target_path: Path) -> None:
+def _render_fallback_png(latex: str, target_path: Path) -> None:
     font = _fallback_font()
     padding = 28
-    lines = [
-        "Equation preview unavailable",
-        "Open the original PDF or reconvert after the server finishes deploying.",
-    ]
+    lines = _fallback_equation_lines(latex)
     text = "\n".join(lines)
 
     measure_image = Image.new("RGB", (1, 1), "white")
@@ -126,6 +125,25 @@ def _render_fallback_png(_latex: str, target_path: Path) -> None:
         spacing=8,
     )
     image.save(target_path, format="PNG")
+
+
+def _fallback_equation_lines(latex: str, max_line_length: int = 80) -> list[str]:
+    readable = latex_to_readable_math_text(latex)
+    if not readable:
+        return ["수식을 표시할 수 없습니다"]
+
+    lines: list[str] = []
+    for segment in readable.split(";"):
+        segment = segment.strip()
+        while len(segment) > max_line_length:
+            break_at = segment.rfind(" ", 0, max_line_length)
+            if break_at < max_line_length // 2:
+                break_at = max_line_length
+            lines.append(segment[:break_at].strip())
+            segment = segment[break_at:].strip()
+        if segment:
+            lines.append(segment)
+    return lines or ["수식을 표시할 수 없습니다"]
 
 
 def _crop_rendered_equation_whitespace(
