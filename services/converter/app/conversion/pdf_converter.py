@@ -27,7 +27,7 @@ REFERENCE_PATTERNS = (
 CITATION_PATTERN = re.compile(r"\[(?:\d+\s*,\s*)*\d+\]")
 EQUATION_CLIP_LEFT_PADDING = 32.0
 EQUATION_CLIP_RIGHT_PADDING = 80.0
-EQUATION_CLIP_VERTICAL_PADDING = 8.0
+EQUATION_CLIP_VERTICAL_PADDING = 2.0
 TABLE_REGION_CLOSE_GAP = 36.0
 TABLE_REGION_CONTENT_GAP = 72.0
 TABLE_REGION_OVERLAP_TOLERANCE = -24.0
@@ -67,6 +67,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
     body_lines = _merge_lines_into_paragraphs(
         [line for line in lines if line["text"] and line["text"] != title]
     )
+    _annotate_asset_clip_bounds(body_lines)
 
     section_id = "sec-1"
     blocks: list[DocumentBlock] = []
@@ -265,7 +266,9 @@ def _same_visual_line(left: list[float], right: list[float]) -> bool:
     vertical_overlap = min(left[3], right[3]) - max(left[1], right[1])
     if vertical_overlap <= 0:
         return False
-    return vertical_overlap / max(1.0, min(left[3] - left[1], right[3] - right[1])) >= 0.45
+    left_center = (left[1] + left[3]) / 2
+    right_center = (right[1] + right[3]) / 2
+    return abs(left_center - right_center) <= 3.0
 
 
 def _line_text(line: dict) -> str:
@@ -393,16 +396,6 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             table["_hasTableContent"] = False
             continue
 
-        if _looks_like_figure_visual_start(line["text"]):
-            flush_current()
-            flush_equation()
-            flush_table()
-            figure = dict(line)
-            figure["kind"] = BlockKind.figure
-            figure["_hasFigureCaption"] = False
-            figure["_figureMode"] = _figure_visual_mode(line["text"])
-            continue
-
         if _looks_like_equation_line(line["text"]) or (
             equation is not None and _looks_like_equation_continuation(line["text"])
         ):
@@ -415,6 +408,16 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
                 flush_equation()
                 equation = dict(line)
                 equation["kind"] = BlockKind.equation
+            continue
+
+        if _looks_like_figure_visual_start(line["text"]):
+            flush_current()
+            flush_equation()
+            flush_table()
+            figure = dict(line)
+            figure["kind"] = BlockKind.figure
+            figure["_hasFigureCaption"] = False
+            figure["_figureMode"] = _figure_visual_mode(line["text"])
             continue
 
         flush_equation()
@@ -464,18 +467,62 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
     return paragraphs
 
 
+def _annotate_asset_clip_bounds(lines: list[dict]) -> None:
+    for index, line in enumerate(lines):
+        if line.get("kind") not in {BlockKind.equation, BlockKind.figure}:
+            continue
+
+        previous_text = next(
+            (
+                candidate
+                for candidate in reversed(lines[:index])
+                if candidate["page"] == line["page"]
+                and candidate.get("kind")
+                not in {BlockKind.equation, BlockKind.figure, BlockKind.table}
+            ),
+            None,
+        )
+        next_text = next(
+            (
+                candidate
+                for candidate in lines[index + 1 :]
+                if candidate["page"] == line["page"]
+                and candidate.get("kind")
+                not in {BlockKind.equation, BlockKind.figure, BlockKind.table}
+            ),
+            None,
+        )
+
+        line_top = float(line["rect"][1])
+        line_bottom = float(line["rect"][3])
+        if line.get("kind") == BlockKind.equation and previous_text is not None:
+            previous_bottom = float(previous_text["rect"][3])
+            if previous_bottom <= line_top + 4.0:
+                line["_clipTop"] = max(0.0, previous_bottom - 2.0)
+            elif previous_bottom > line_top:
+                line["_clipTop"] = line_top + 4.0
+        if next_text is not None:
+            next_top = float(next_text["rect"][1])
+            if next_top >= line_bottom - 8.0:
+                line["_clipBottom"] = max(line_top + 4.0, next_top - 2.0)
+
+
 def _looks_like_equation_line(text: str) -> bool:
     stripped = text.strip()
     if not stripped:
         return False
     if re.fullmatch(r"\(\d+\)", stripped):
         return False
+    if _looks_like_isolated_equation_operator(stripped):
+        return True
     word_count = len(stripped.split())
+    if _looks_like_inline_math_sentence(stripped):
+        return False
     if stripped.endswith((".", ",", ";")):
         return False
     if "=" in stripped and word_count <= 14:
-        if _looks_like_inline_math_sentence(stripped):
-            return False
+        return True
+    if ":=" in stripped and word_count <= 18:
         return True
     if word_count == 1:
         return False
@@ -491,8 +538,24 @@ def _looks_like_equation_line(text: str) -> bool:
     )
 
 
+def _looks_like_isolated_equation_operator(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    return compact in {"YT", "Y", "T", "X", "∏", "Σ"}
+
+
 def _looks_like_inline_math_sentence(text: str) -> bool:
     words = re.findall(r"[A-Za-z]{2,}", text.lower())
+    if text.strip().endswith(":") and any(
+        word
+        in {
+            "according",
+            "likelihood",
+            "starting",
+            "transitions",
+        }
+        for word in words
+    ):
+        return True
     if len(words) < 7:
         return False
     return any(
@@ -539,16 +602,31 @@ def _figure_visual_mode(text: str) -> str | None:
 
 def _looks_like_diffusion_graphical_model_line(text: str) -> bool:
     compact = re.sub(r"\s+", "", text.strip())
+    if _looks_like_diffusion_graphical_model_label(compact):
+        return True
     return bool(
-        re.search(r"(?:xT|x0|xt|x_t|q\(|p.)", compact)
-        and re.search(r"(?:\||!|---|→|←)", compact)
+        re.search(r"(?:xT|x0|x₀|xt|x_t)", compact)
+        and re.search(r"(?:−!|->|-->|---|→|←)", compact)
     )
 
 
 def _looks_like_diffusion_graphical_model_fragment(text: str) -> bool:
     compact = re.sub(r"\s+", "", text.strip())
-    return _looks_like_diffusion_graphical_model_line(text) or bool(
-        re.fullmatch(r"(?:[·.]*)(?:[^A-Za-z0-9]?!|→|←)(?:[·.]*)", compact)
+    if _looks_like_diffusion_graphical_model_line(text):
+        return True
+    if compact in {"xT", "xt", "x0", "x₀"}:
+        return True
+    if re.search(r"(?:−!|->|-->|---|→|←)", compact):
+        return not re.search(r"[A-Za-z]{3,}", compact)
+    return False
+
+
+def _looks_like_diffusion_graphical_model_label(compact: str) -> bool:
+    if any(operator in compact for operator in ("=", ":=", ",")):
+        return False
+    return bool(
+        re.fullmatch(r"p.?\(x[tT](?:−1|-1)?\|x[tT]\)", compact)
+        or re.fullmatch(r"q\(x[tT]\|x[tT](?:−1|-1)?\)", compact)
     )
 
 
@@ -593,6 +671,8 @@ def _looks_like_table_content(text: str) -> bool:
         return False
     if stripped in {"Model", "BLEU", "Training Cost (FLOPs)"}:
         return True
+    if re.fullmatch(r"\d{1,3}", stripped):
+        return True
     if re.fullmatch(r"\([A-Z]\)", stripped):
         return True
     lowered = stripped.lower()
@@ -636,7 +716,9 @@ def _looks_like_equation_continuation(text: str) -> bool:
         return True
     if len(stripped.split()) > 6:
         return False
-    if stripped.endswith((".", ":", ";")):
+    if stripped.endswith((".", ":")):
+        return False
+    if stripped.endswith(";") and not re.search(r"(?:[pq]\(|N\(|=|\|)", stripped):
         return False
     compact = re.sub(r"\s+", "", stripped)
     if len(compact) > 40:
@@ -891,11 +973,20 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
 
     rect = fitz.Rect(line["rect"])
     if asset.kind == AssetKind.equation:
+        top = max(0, rect.y0 - EQUATION_CLIP_VERTICAL_PADDING)
+        bottom = min(page.rect.height, rect.y1 + EQUATION_CLIP_VERTICAL_PADDING)
+        if "_clipTop" in line:
+            top = max(top, float(line["_clipTop"]))
+        if "_clipBottom" in line:
+            bottom = min(bottom, float(line["_clipBottom"]))
+        if bottom <= top:
+            top = max(0, rect.y0 - EQUATION_CLIP_VERTICAL_PADDING)
+            bottom = min(page.rect.height, rect.y1 + EQUATION_CLIP_VERTICAL_PADDING)
         return fitz.Rect(
             max(0, rect.x0 - EQUATION_CLIP_LEFT_PADDING),
-            max(0, rect.y0 - EQUATION_CLIP_VERTICAL_PADDING),
+            top,
             min(page.rect.width, rect.x1 + EQUATION_CLIP_RIGHT_PADDING),
-            min(page.rect.height, rect.y1 + EQUATION_CLIP_VERTICAL_PADDING),
+            bottom,
         )
     if asset.kind == AssetKind.table:
         return fitz.Rect(
@@ -906,17 +997,23 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
         )
     if asset.kind == AssetKind.figure and line.get("kind") == BlockKind.figure:
         if line.get("_figureMode") == "diagram":
+            bottom = min(page.rect.height, rect.y1 + 24)
+            if "_clipBottom" in line:
+                bottom = min(bottom, float(line["_clipBottom"]))
             return fitz.Rect(
                 0,
                 max(0, rect.y0 - 24),
                 page.rect.width,
-                min(page.rect.height, rect.y1 + 24),
+                bottom,
             )
+        bottom = min(page.rect.height, rect.y1 + 18)
+        if "_clipBottom" in line:
+            bottom = min(bottom, float(line["_clipBottom"]))
         return fitz.Rect(
             max(0, rect.x0 - 18),
             max(0, rect.y0 - 18),
             min(page.rect.width, rect.x1 + 18),
-            min(page.rect.height, rect.y1 + 18),
+            bottom,
         )
 
     top = max(0, rect.y0 - 280)

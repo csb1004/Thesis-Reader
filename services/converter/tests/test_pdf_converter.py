@@ -196,6 +196,19 @@ def test_keeps_tiny_table_math_fragments_out_of_equation_blocks():
     )
 
 
+def test_combines_pdf_spans_only_when_their_line_centers_match():
+    lines = [
+        _pdf_line([108.0, 534.7, 504.0, 555.0], "posterior q(x1:T |x0), called the forward process, is fixed to a chain that"),
+        _pdf_line([108.0, 545.6, 454.6, 559.1], "gradually adds Gaussian noise according to a variance schedule beta1, ..., betaT:"),
+    ]
+
+    combined = pdf_converter._combine_inline_pdf_lines(lines)
+
+    assert len(combined) == 2
+    assert pdf_converter._line_text(combined[0]).startswith("posterior q")
+    assert pdf_converter._line_text(combined[1]).startswith("gradually adds")
+
+
 def test_restores_inline_superscripts_and_subscripts_from_pdf_spans(tmp_path):
     pdf_path = write_complexity_table_pdf(tmp_path / "complexity.pdf")
     output_dir = tmp_path / "out"
@@ -637,8 +650,64 @@ def test_equation_clip_keeps_horizontal_padding_without_broad_vertical_crop():
 
     assert clip.x0 <= 40
     assert clip.x1 >= 368
-    assert clip.y0 <= 92
-    assert clip.y1 >= 138
+    assert clip.y0 >= 98
+    assert clip.y1 <= 132
+
+
+def test_equation_clip_uses_tight_default_vertical_padding():
+    page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
+    line = {"rect": [72, 100, 320, 130]}
+    asset = DocumentAsset(
+        id="eq-1",
+        kind=AssetKind.equation,
+        label="Equation 1",
+        relativePath="assets/eq-1.png",
+    )
+
+    clip = pdf_converter._asset_clip(page, line, asset)
+
+    assert clip.y0 >= 98
+    assert clip.y1 <= 132
+
+
+def test_equation_clip_respects_adjacent_text_bounds():
+    page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
+    line = {
+        "rect": [124, 491.5, 504, 529.2],
+        "_clipTop": 491.6,
+        "_clipBottom": 521.8,
+    }
+    asset = DocumentAsset(
+        id="eq-1",
+        kind=AssetKind.equation,
+        label="(1)",
+        relativePath="assets/eq-1.png",
+    )
+
+    clip = pdf_converter._asset_clip(page, line, asset)
+
+    assert clip.y0 >= 491.6
+    assert clip.y1 <= 521.8
+
+
+def test_equation_clip_bounds_trim_overlapping_prose_rects_from_top():
+    lines = [
+        {
+            "text": "using the notation alpha_t and alpha_bar_t, we have",
+            "page": 2,
+            "rect": [107.7, 646.5, 504.0, 730.4],
+        },
+        {
+            "text": "q(xt|x0) = N(xt; sqrt(alpha_bar_t)x0, (1 - alpha_bar_t)I)(4)",
+            "page": 2,
+            "rect": [229.8, 701.4, 504.0, 726.3],
+            "kind": BlockKind.equation,
+        },
+    ]
+
+    pdf_converter._annotate_asset_clip_bounds(lines)
+
+    assert lines[1]["_clipTop"] == 705.4
 
 
 def test_asset_image_source_prefers_block_anchor_over_earlier_reference():
@@ -801,6 +870,76 @@ def test_diffusion_graphical_model_region_becomes_figure_asset():
     assert "The forward process gradually adds Gaussian noise to data." in plain_text
 
 
+def test_diffusion_graphical_model_keeps_split_arrow_fragments_together():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "p✓(xt−1|xt)",
+                "page": 2,
+                "rect": [276.0, 72.0, 315.1, 85.7],
+            },
+            {
+                "text": "−! · · · −!",
+                "page": 2,
+                "rect": [185.1, 79.9, 243.6, 100.4],
+            },
+            {
+                "text": "−−−−−! xt−1 −! · · · −! x0",
+                "page": 2,
+                "rect": [274.3, 79.9, 425.9, 101.6],
+            },
+            {
+                "text": "xT",
+                "page": 2,
+                "rect": [162.5, 80.2, 175.2, 92.9],
+            },
+            {
+                "text": "xt",
+                "page": 2,
+                "rect": [253.3, 80.2, 264.1, 92.9],
+            },
+            {
+                "text": "−!",
+                "page": 2,
+                "rect": [270.0, 83.6, 297.7, 111.5],
+            },
+            {
+                "text": "q(xt|xt−1)",
+                "page": 2,
+                "rect": [277.7, 106.7, 313.0, 120.4],
+            },
+            {
+                "text": "Figure 2: The directed graphical model considered in this work.",
+                "page": 2,
+                "rect": [189.5, 120.8, 422.5, 132.8],
+            },
+            {
+                "text": "This paper presents progress in diffusion probabilistic models.",
+                "page": 2,
+                "rect": [107.7, 140.9, 505.7, 152.9],
+            },
+        ]
+    )
+
+    figure_regions = [
+        paragraph for paragraph in paragraphs if paragraph.get("kind") == BlockKind.figure
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.figure
+    )
+
+    assert len(figure_regions) == 1
+    assert "p✓(xt−1|xt)" in figure_regions[0]["text"]
+    assert "xT" in figure_regions[0]["text"]
+    assert "q(xt|xt−1)" in figure_regions[0]["text"]
+    assert "Figure 2" in figure_regions[0]["text"]
+    assert "xT" not in plain_text
+    assert "q(xt|xt−1)" not in plain_text
+    assert "This paper presents progress" in plain_text
+
+
 def test_diffusion_figure_clip_uses_full_page_width_to_avoid_cutting_graph():
     page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
     line = {
@@ -821,6 +960,186 @@ def test_diffusion_figure_clip_uses_full_page_width_to_avoid_cutting_graph():
     assert clip.x1 == 600
     assert clip.y0 <= 302
     assert clip.y1 >= 442
+
+
+def test_diffusion_figure_clip_respects_following_text_bound():
+    page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
+    line = {
+        "kind": BlockKind.figure,
+        "_figureMode": "diagram",
+        "rect": [162, 72, 426, 133],
+        "_clipBottom": 138,
+    }
+    asset = DocumentAsset(
+        id="fig-2",
+        kind=AssetKind.figure,
+        label="Figure 2",
+        relativePath="assets/fig-2.png",
+    )
+
+    clip = pdf_converter._asset_clip(page, line, asset)
+
+    assert clip.y1 <= 138
+
+
+def test_diffusion_conditioned_equation_is_equation_not_figure():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "posterior q(x1:T |x0), called the forward process, is fixed to a Markov chain that",
+                "page": 2,
+                "rect": [108.0, 534.7, 504.0, 555.0],
+            },
+            {
+                "text": "gradually adds Gaussian noise according to a variance schedule beta1, ..., betaT:",
+                "page": 2,
+                "rect": [108.0, 545.6, 454.6, 559.1],
+            },
+            {
+                "text": "YT",
+                "page": 2,
+                "rect": [211.5, 562.0, 224.3, 599.7],
+            },
+            {
+                "text": "q(x1:T |x0) :=",
+                "page": 2,
+                "rect": [151.6, 571.9, 208.6, 590.8],
+            },
+            {
+                "text": "q(xt|xt-1), q(xt|xt-1) := N(xt;",
+                "page": 2,
+                "rect": [226.1, 572.0, 380.9, 589.3],
+            },
+            {
+                "text": "1 - beta_t xt-1, beta_t I)(2)",
+                "page": 2,
+                "rect": [392.6, 570.5, 504.0, 589.3],
+            },
+            {
+                "text": "Training is performed by optimizing the usual variational bound on negative log likelihood:",
+                "page": 2,
+                "rect": [107.7, 599.8, 472.2, 611.8],
+            },
+        ]
+    )
+
+    equation_regions = [
+        paragraph
+        for paragraph in paragraphs
+        if paragraph.get("kind") == BlockKind.equation
+    ]
+    figure_regions = [
+        paragraph for paragraph in paragraphs if paragraph.get("kind") == BlockKind.figure
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") not in {BlockKind.equation, BlockKind.figure}
+    )
+
+    assert len(equation_regions) == 1
+    assert not figure_regions
+    assert "q(x1:T |x0)" in equation_regions[0]["text"]
+    assert "beta_t I)(2)" in equation_regions[0]["text"]
+    assert "YT" not in plain_text
+    assert "Training is performed" in plain_text
+
+
+def test_diffusion_introductory_prose_stays_out_of_equation_asset():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "transitions starting at p(xT ) = N(xT ; 0, I):",
+                "page": 2,
+                "rect": [108.0, 474.8, 283.8, 493.6],
+            },
+            {
+                "text": "YT",
+                "page": 2,
+                "rect": [202.3, 491.5, 215.0, 529.2],
+            },
+            {
+                "text": "p_theta(x0:T ) := p(xT )",
+                "page": 2,
+                "rect": [124.1, 501.4, 200.4, 513.2],
+            },
+            {
+                "text": "p_theta(xt-1|xt), p_theta(xt-1|xt) := N(xt-1; mu_theta(xt, t), Sigma_theta(xt, t)) (1)",
+                "page": 2,
+                "rect": [216.8, 501.5, 504.0, 518.7],
+            },
+            {
+                "text": "What distinguishes diffusion models from other latent variable models is that the approximate",
+                "page": 2,
+                "rect": [107.5, 523.8, 504.0, 535.8],
+            },
+        ]
+    )
+
+    equation_regions = [
+        paragraph
+        for paragraph in paragraphs
+        if paragraph.get("kind") == BlockKind.equation
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.equation
+    )
+
+    assert len(equation_regions) == 1
+    assert "p_theta(x0:T )" in equation_regions[0]["text"]
+    assert "transitions starting" not in equation_regions[0]["text"]
+    assert "transitions starting at p(xT)" in plain_text
+    assert "What distinguishes diffusion models" in plain_text
+    assert "YT" not in plain_text
+
+
+def test_diffusion_split_product_operator_stays_out_of_prose():
+    paragraphs = pdf_converter._merge_lines_into_paragraphs(
+        [
+            {
+                "text": "transitions starting at p(xT ) = N(xT ; 0, I):",
+                "page": 2,
+                "rect": [108.0, 474.8, 283.8, 493.6],
+            },
+            {
+                "text": "T",
+                "page": 2,
+                "rect": [205.7, 491.5, 210.4, 498.5],
+            },
+            {
+                "text": "Y",
+                "page": 2,
+                "rect": [202.3, 492.0, 215.0, 529.2],
+            },
+            {
+                "text": "p_theta(x0:T ) := p(xT )",
+                "page": 2,
+                "rect": [124.1, 501.4, 200.4, 513.2],
+            },
+            {
+                "text": "p_theta(xt-1|xt), p_theta(xt-1|xt) := N(xt-1; mu_theta(xt, t), Sigma_theta(xt, t)) (1)",
+                "page": 2,
+                "rect": [216.8, 501.5, 504.0, 518.7],
+            },
+        ]
+    )
+
+    equation_regions = [
+        paragraph
+        for paragraph in paragraphs
+        if paragraph.get("kind") == BlockKind.equation
+    ]
+    plain_text = " ".join(
+        paragraph["text"]
+        for paragraph in paragraphs
+        if paragraph.get("kind") != BlockKind.equation
+    )
+
+    assert len(equation_regions) == 1
+    assert "T Y" in equation_regions[0]["text"]
+    assert plain_text.endswith("I):")
 
 
 def test_references_section_splits_numbered_entries():
@@ -878,6 +1197,20 @@ def test_reference_spans_marks_inline_citations_without_assets():
         (ReferenceKind.citation, "[27]"),
     ]
     assert all(span.targetAssetId == "" for span in spans)
+
+
+def _pdf_line(bbox, text):
+    return {
+        "bbox": bbox,
+        "spans": [
+            {
+                "text": text,
+                "bbox": bbox,
+                "origin": (bbox[0], bbox[3] - 2),
+                "size": 10.0,
+            }
+        ],
+    }
 
 
 def _png_dimensions(path):
