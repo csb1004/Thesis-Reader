@@ -540,8 +540,15 @@ def _figure_visual_mode(text: str) -> str | None:
 def _looks_like_diffusion_graphical_model_line(text: str) -> bool:
     compact = re.sub(r"\s+", "", text.strip())
     return bool(
-        re.search(r"(?:xT|x0|xt|x_t|q\(|p[√(])", compact)
-        and re.search(r"(?:[|√]|−!|-!|→|←|---)", compact)
+        re.search(r"(?:xT|x0|xt|x_t|q\(|p.)", compact)
+        and re.search(r"(?:\||!|---|→|←)", compact)
+    )
+
+
+def _looks_like_diffusion_graphical_model_fragment(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text.strip())
+    return _looks_like_diffusion_graphical_model_line(text) or bool(
+        re.fullmatch(r"(?:[·.]*)(?:[^A-Za-z0-9]?!|→|←)(?:[·.]*)", compact)
     )
 
 
@@ -552,11 +559,11 @@ def _should_continue_figure_region(figure: dict, line: dict) -> bool:
         return False
     if _contains_figure_caption(line["text"]):
         return True
+    if figure.get("_figureMode") == "diagram":
+        return _looks_like_diffusion_graphical_model_fragment(line["text"])
     if figure.get("_hasFigureCaption"):
         vertical_gap = line["rect"][1] - figure["rect"][3]
         return 0 <= vertical_gap <= 24 and not _looks_like_heading(line["text"])
-    if figure.get("_figureMode") == "diagram":
-        return _looks_like_diffusion_graphical_model_line(line["text"])
     return True
 
 
@@ -898,6 +905,13 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
             min(page.rect.height, rect.y1 + 12),
         )
     if asset.kind == AssetKind.figure and line.get("kind") == BlockKind.figure:
+        if line.get("_figureMode") == "diagram":
+            return fitz.Rect(
+                0,
+                max(0, rect.y0 - 24),
+                page.rect.width,
+                min(page.rect.height, rect.y1 + 24),
+            )
         return fitz.Rect(
             max(0, rect.x0 - 18),
             max(0, rect.y0 - 18),

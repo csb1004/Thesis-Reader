@@ -768,6 +768,11 @@ def test_diffusion_graphical_model_region_becomes_figure_asset():
                 "rect": [72.0, 400.0, 504.0, 424.0],
             },
             {
+                "text": "−!",
+                "page": 2,
+                "rect": [514.0, 402.0, 532.0, 424.0],
+            },
+            {
                 "text": "The forward process gradually adds Gaussian noise to data.",
                 "page": 2,
                 "rect": [72.0, 470.0, 504.0, 490.0],
@@ -788,10 +793,34 @@ def test_diffusion_graphical_model_region_becomes_figure_asset():
     assert "Figure 2" in figure_regions[0]["text"]
     assert "p√(xt−1|xt)" in figure_regions[0]["text"]
     assert "xT−!" in figure_regions[0]["text"]
+    assert "−!" in figure_regions[0]["text"]
     assert "p√(xt−1|xt)" not in plain_text
     assert "xT−!" not in plain_text
+    assert " −! " not in f" {plain_text} "
     assert "Figure 1: Generated samples" in plain_text
     assert "The forward process gradually adds Gaussian noise to data." in plain_text
+
+
+def test_diffusion_figure_clip_uses_full_page_width_to_avoid_cutting_graph():
+    page = SimpleNamespace(rect=fitz.Rect(0, 0, 600, 800))
+    line = {
+        "kind": BlockKind.figure,
+        "_figureMode": "diagram",
+        "rect": [72, 320, 532, 424],
+    }
+    asset = DocumentAsset(
+        id="fig-2",
+        kind=AssetKind.figure,
+        label="Figure 2",
+        relativePath="assets/fig-2.png",
+    )
+
+    clip = pdf_converter._asset_clip(page, line, asset)
+
+    assert clip.x0 == 0
+    assert clip.x1 == 600
+    assert clip.y0 <= 302
+    assert clip.y1 >= 442
 
 
 def test_references_section_splits_numbered_entries():
