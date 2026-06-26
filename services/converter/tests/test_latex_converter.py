@@ -53,3 +53,41 @@ q(x_t \mid x_0) = \mathcal{N}(x_t; \sqrt{\bar\alpha_t}x_0, (1-\bar\alpha_t)I)
         for block in package.blocks
     )
     assert (tmp_path / "out" / "package.json").exists()
+
+
+def test_preserves_ddpm_multiline_loss_equation_as_latex(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Denoising Diffusion Probabilistic Models}
+\begin{document}
+\section{Background}
+Equation (5) uses KL divergence:
+\begin{align}
+L &= D_{KL}(q(x_T \mid x_0) \| p(x_T)) \\
+&+ \sum_{t>1} D_{KL}(q(x_{t-1} \mid x_t, x_0) \| p_\theta(x_{t-1} \mid x_t)) \\
+&- \log p_\theta(x_0 \mid x_1)
+\end{align}
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="2006.11239.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "2006.11239", "mainTex": "main.tex"},
+    )
+
+    equations = [block for block in package.blocks if block.kind == BlockKind.equation]
+    assert len(equations) == 1
+    assert r"D_{KL}" in equations[0].latex
+    assert r"\sum_{t>1}" in equations[0].latex
+    body_text = " ".join(block.text or "" for block in package.blocks)
+    assert "LT" not in body_text
+    assert "L0" not in body_text
+    assert "l{z}" not in body_text

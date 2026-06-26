@@ -61,3 +61,41 @@ def test_falls_back_to_pdf_when_source_conversion_fails(tmp_path, monkeypatch):
 
     assert package.conversionMode == "pdf-fallback"
     assert "source unavailable" in package.fallbackReason
+
+
+def test_pdf_layout_mode_when_no_arxiv_id_is_detected(tmp_path, monkeypatch):
+    pdf_path = tmp_path / "renamed.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake fixture")
+
+    def fake_pdf_converter(pdf_path, output_dir, document_id):
+        from services.converter.app.models.document_package import (
+            DocumentMetadata,
+            DocumentPackage,
+        )
+
+        return DocumentPackage(
+            packageVersion=1,
+            documentId=document_id,
+            metadata=DocumentMetadata(
+                title="Fallback",
+                sourceFilename=pdf_path.name,
+                originalPdfSha256="abc123",
+            ),
+            sections=[],
+            blocks=[],
+            assets=[],
+        )
+
+    monkeypatch.setattr(
+        "services.converter.app.conversion.document_converter._first_pages_text",
+        lambda pdf_path, page_limit: "A paper without source identifier",
+    )
+    monkeypatch.setattr(
+        "services.converter.app.conversion.document_converter.convert_pdf_to_package",
+        fake_pdf_converter,
+    )
+
+    package = convert_document_to_package(pdf_path, tmp_path / "out", "doc-1")
+
+    assert package.conversionMode == "pdf-layout"
+    assert package.fallbackReason == "No arXiv ID detected"
