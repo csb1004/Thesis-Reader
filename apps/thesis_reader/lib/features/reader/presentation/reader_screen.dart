@@ -1239,6 +1239,15 @@ final class _InlineAssetPreview extends StatelessWidget {
       '.webp',
     }.contains(_fileExtension(asset.relativePath));
 
+    if (asset.kind == AssetKind.equation) {
+      return _InlineEquationPreview(
+        asset: asset,
+        file: file,
+        isImage: isImage,
+        readerTheme: readerTheme,
+      );
+    }
+
     if (isImage && file.existsSync()) {
       return ConstrainedBox(
         constraints: BoxConstraints(
@@ -1262,6 +1271,57 @@ final class _InlineAssetPreview extends StatelessWidget {
     }
 
     return _InlineAssetFallback(asset: asset, readerTheme: readerTheme);
+  }
+}
+
+final class _InlineEquationPreview extends StatelessWidget {
+  const _InlineEquationPreview({
+    required this.asset,
+    required this.file,
+    required this.isImage,
+    required this.readerTheme,
+  });
+
+  final DocumentAsset asset;
+  final File file;
+  final bool isImage;
+  final ReaderThemeData readerTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SizedBox(
+          width: double.infinity,
+          child: SingleChildScrollView(
+            key: Key('reader-inline-equation-scroll-${asset.id}'),
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: isImage && file.existsSync()
+                    ? Image.file(
+                        file,
+                        height: 92,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _InlineAssetFallback(
+                            asset: asset,
+                            readerTheme: readerTheme,
+                          );
+                        },
+                      )
+                    : _InlineAssetFallback(
+                        asset: asset,
+                        readerTheme: readerTheme,
+                      ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

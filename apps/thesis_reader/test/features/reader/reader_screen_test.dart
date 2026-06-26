@@ -475,6 +475,24 @@ void main() {
     );
   });
 
+  testWidgets('renders equation assets in a horizontal readable preview', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithEquationAsset('/tmp/equation.png'),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('reader-inline-equation-scroll-equation-1')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('prefers equation assets over client-side latex rendering', (
     tester,
   ) async {
@@ -494,7 +512,10 @@ void main() {
       find.byKey(const Key('reader-inline-asset-equation-1')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('reader-latex-equation-eq-block')), findsNothing);
+    expect(
+      find.byKey(const Key('reader-latex-equation-eq-block')),
+      findsNothing,
+    );
     expect(find.textContaining('Parser Error'), findsNothing);
   });
 
@@ -756,7 +777,10 @@ DocumentPackage _packageWithBlocks(List<String> texts) {
   );
 }
 
-DocumentPackage _packageWithEquationAsset(String equationPath, {String? latex}) {
+DocumentPackage _packageWithEquationAsset(
+  String equationPath, {
+  String? latex,
+}) {
   return DocumentPackage(
     packageVersion: 1,
     documentId: 'doc-1',

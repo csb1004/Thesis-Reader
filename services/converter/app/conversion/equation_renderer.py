@@ -66,6 +66,7 @@ def _render_with_pdflatex(
             page = document[0]
             pixmap = page.get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
             pixmap.save(target_path)
+        _crop_rendered_equation_whitespace(target_path)
 
 
 def _equation_document(latex: str, environment: str | None) -> str:
@@ -125,6 +126,26 @@ def _render_fallback_png(_latex: str, target_path: Path) -> None:
         spacing=8,
     )
     image.save(target_path, format="PNG")
+
+
+def _crop_rendered_equation_whitespace(
+    image_path: Path,
+    padding: int = 36,
+    white_threshold: int = 248,
+) -> None:
+    image = Image.open(image_path).convert("RGB")
+    mask = image.convert("L").point(
+        lambda pixel: 255 if pixel < white_threshold else 0,
+    )
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+
+    left = max(0, bbox[0] - padding)
+    top = max(0, bbox[1] - padding)
+    right = min(image.width, bbox[2] + padding)
+    bottom = min(image.height, bbox[3] + padding)
+    image.crop((left, top, right, bottom)).save(image_path, format="PNG")
 
 
 def _fallback_font() -> ImageFont.ImageFont:
