@@ -22,6 +22,30 @@ def test_converts_pdf_extracted_plain_math_names_to_symbols():
     assert readable == "p_{θ}(xₜ)+√dₖ+10⁹+2π"
 
 
+def test_converts_lost_bold_and_tilde_greek_math_names():
+    readable = normalize_readable_math_fragments(
+        "p_theta(x_t|x_t)=N(x_t;bmu_theta(x_t,t),bSigma_theta(x_t,t)) "
+        "set bSigma_theta(x_t,t)=sigma_t^2 I and sigma_t^2=tildebeta_t"
+    )
+
+    assert readable == (
+        "p_{θ}(xₜ|xₜ)=N(xₜ;μ_{θ}(xₜ,t),Σ_{θ}(xₜ,t)) "
+        "set Σ_{θ}(xₜ,t)=σₜ² I and σₜ²=β̃ₜ"
+    )
+
+
+def test_converts_latex_bold_tilde_and_full_greek_alphabet_names():
+    assert latex_to_readable_math_text(
+        r"\bm{\mu}_\theta + \boldsymbol{\Sigma}_\theta + \tilde{\beta}_t"
+    ) == "μ_{θ}+Σ_{θ}+β̃ₜ"
+
+    readable = latex_to_readable_math_text(
+        "zeta eta iota kappa xi upsilon chi psi vartheta varrho varsigma"
+    )
+
+    assert readable == "ζ η ι κ ξ υ χ ψ ϑ ϱ ς"
+
+
 def test_converts_standalone_pdf_subscript_fragments():
     readable = normalize_readable_math_fragments(
         "p_theta(x_0):=int p_theta(x_0:T) dx_1:T, where x_1,...,x_T"

@@ -82,27 +82,73 @@ _SUBSCRIPT_MAP = str.maketrans(
     }
 )
 _GREEK_REPLACEMENTS = {
+    "Alpha": "Α",
+    "Beta": "Β",
+    "Gamma": "Γ",
+    "Delta": "Δ",
+    "Epsilon": "Ε",
+    "Zeta": "Ζ",
+    "Eta": "Η",
+    "Theta": "Θ",
+    "Iota": "Ι",
+    "Kappa": "Κ",
+    "Lambda": "Λ",
+    "Mu": "Μ",
+    "Nu": "Ν",
+    "Xi": "Ξ",
+    "Omicron": "Ο",
+    "Pi": "Π",
+    "Rho": "Ρ",
+    "Sigma": "Σ",
+    "Tau": "Τ",
+    "Upsilon": "Υ",
+    "Phi": "Φ",
+    "Chi": "Χ",
+    "Psi": "Ψ",
+    "Omega": "Ω",
     "alpha": "α",
     "beta": "β",
     "gamma": "γ",
     "delta": "δ",
     "epsilon": "ε",
     "varepsilon": "ε",
+    "zeta": "ζ",
+    "eta": "η",
     "theta": "θ",
+    "vartheta": "ϑ",
+    "iota": "ι",
+    "kappa": "κ",
+    "varkappa": "ϰ",
     "lambda": "λ",
     "mu": "μ",
     "nu": "ν",
+    "xi": "ξ",
+    "omicron": "ο",
     "pi": "π",
+    "varpi": "ϖ",
     "rho": "ρ",
+    "varrho": "ϱ",
     "sigma": "σ",
+    "varsigma": "ς",
     "tau": "τ",
+    "upsilon": "υ",
     "phi": "φ",
     "varphi": "φ",
+    "chi": "χ",
+    "psi": "ψ",
     "omega": "ω",
-    "Delta": "Δ",
-    "Gamma": "Γ",
-    "Sigma": "Σ",
-    "Omega": "Ω",
+}
+_BOLD_SYMBOL_REPLACEMENTS = {
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
 }
 _SYMBOL_REPLACEMENTS = {
     "cdot": "·",
@@ -157,7 +203,8 @@ def normalize_readable_math_fragments(text: str) -> str:
     for _ in range(2):
         normalized = re.sub(
             r"(?<![A-Za-z0-9])(?:[A-Za-z]+|[\u0370-\u03ff])_"
-            r"[A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?",
+            r"[A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?"
+            r"(?:\^[A-Za-z0-9+\-]+|\^\([^)]+\))?",
             lambda match: latex_to_readable_math_text(match.group(0)),
             normalized,
         )
@@ -166,7 +213,7 @@ def normalize_readable_math_fragments(text: str) -> str:
         lambda match: _standalone_script_text(match.group(1)),
         normalized,
     )
-    return _replace_bare_greek_names(normalized)
+    return _replace_plain_math_names(normalized)
 
 
 def latex_to_readable_math_text(text: str) -> str:
@@ -206,7 +253,7 @@ def latex_to_readable_math_text(text: str) -> str:
             cleaned,
         )
         cleaned = re.sub(
-            r"\\(?:mathrm|mathbf|boldsymbol|mathcal|mathbb|text|operatorname)\{([^{}]+)\}",
+            r"\\(?:mathrm|mathbf|boldsymbol|bm|mathcal|mathbb|text|operatorname)\{([^{}]+)\}",
             lambda match: latex_to_readable_math_text(match.group(1)),
             cleaned,
         )
@@ -218,6 +265,16 @@ def latex_to_readable_math_text(text: str) -> str:
         cleaned = re.sub(
             r"\\bar\s*\\([a-zA-Z]+)",
             lambda match: f"{_replace_named_symbol(match.group(1))}\u0304",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"\\tilde\{([^{}]+)\}",
+            lambda match: f"{latex_to_readable_math_text(match.group(1))}\u0303",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"\\tilde\s*\\([a-zA-Z]+)",
+            lambda match: f"{_replace_named_symbol(match.group(1))}\u0303",
             cleaned,
         )
         cleaned = re.sub(
@@ -233,7 +290,7 @@ def latex_to_readable_math_text(text: str) -> str:
         if cleaned == before:
             break
 
-    cleaned = _replace_bare_greek_names(cleaned)
+    cleaned = _replace_plain_math_names(cleaned)
 
     cleaned = re.sub(
         r"_\\([a-zA-Z]+)",
@@ -261,7 +318,7 @@ def latex_to_readable_math_text(text: str) -> str:
         cleaned,
     )
     cleaned = re.sub(
-        r"\^([A-Za-z0-9+\-=]+)",
+        r"\^([A-Za-z0-9+\-]+)",
         lambda match: _script_text(match.group(1), subscript=False),
         cleaned,
     )
@@ -344,3 +401,36 @@ def _replace_bare_greek_names(text: str) -> str:
 
     # PDF extraction often loses the math boundary in prose such as "2pi".
     return re.sub(r"(?<=\d)pi\b", "π", text)
+
+
+def _replace_plain_math_names(text: str) -> str:
+    text = _replace_lost_bold_symbol_names(text)
+    text = _replace_plain_tilde_symbols(text)
+    return _replace_bare_greek_names(text)
+
+
+def _replace_lost_bold_symbol_names(text: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token in _GREEK_REPLACEMENTS:
+            return token
+
+        symbol_name = match.group(1)
+        if symbol_name in _GREEK_REPLACEMENTS:
+            return _GREEK_REPLACEMENTS[symbol_name]
+        return _BOLD_SYMBOL_REPLACEMENTS.get(symbol_name, token)
+
+    return re.sub(r"(?<![A-Za-z0-9])b([A-Za-z]+)(?![A-Za-z0-9])", replace, text)
+
+
+def _replace_plain_tilde_symbols(text: str) -> str:
+    symbol_names = "|".join(
+        re.escape(name)
+        for name in sorted(_GREEK_REPLACEMENTS, key=len, reverse=True)
+    )
+
+    return re.sub(
+        rf"(?<![A-Za-z0-9])tilde(?:_)?({symbol_names}|[\u0370-\u03ff])(?![A-Za-z])",
+        lambda match: f"{_replace_named_symbol(match.group(1))}\u0303",
+        text,
+    )
