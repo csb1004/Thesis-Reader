@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY services/converter services/converter
 
-CMD ["sh", "-c", "uvicorn services.converter.app.main:app --host :: --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn services.converter.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
