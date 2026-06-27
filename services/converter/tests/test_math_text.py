@@ -1,4 +1,7 @@
-from services.converter.app.conversion.math_text import latex_to_readable_math_text
+from services.converter.app.conversion.math_text import (
+    latex_to_readable_math_text,
+    normalize_readable_math_fragments,
+)
 
 
 def test_converts_common_latex_math_to_unicode_reader_text():
@@ -17,6 +20,15 @@ def test_converts_pdf_extracted_plain_math_names_to_symbols():
     )
 
     assert readable == "p_θ(xₜ)+√dₖ+10⁹+2π"
+
+
+def test_converts_standalone_pdf_subscript_fragments():
+    readable = normalize_readable_math_fragments(
+        "p_theta(x_0):=int p_theta(x_0:T) dx_1:T, where x_1,...,x_T"
+    )
+
+    assert readable == "p_θ(x₀):=∫ p_θ(x₀:ₜ) dx₁:ₜ, where x₁,...,xₜ"
+    assert normalize_readable_math_fragments("_theta _0 _T") == "θ ₀ ₜ"
 
 
 def test_converts_attention_positional_encoding_equation_to_readable_text():

@@ -78,6 +78,7 @@ _SUBSCRIPT_MAP = str.maketrans(
         "u": "ᵤ",
         "v": "ᵥ",
         "x": "ₓ",
+        "T": "ₜ",
     }
 )
 _GREEK_REPLACEMENTS = {
@@ -128,6 +129,7 @@ _SYMBOL_REPLACEMENTS = {
     "dots": "…",
     "dotsc": "…",
     "ldots": "…",
+    "int": "∫",
 }
 
 
@@ -147,12 +149,23 @@ def normalize_readable_math_fragments(text: str) -> str:
         lambda match: latex_to_readable_math_text(match.group(0)),
         normalized,
     )
+    normalized = re.sub(
+        r"([:=]\s*)int\b",
+        r"\1∫",
+        normalized,
+    )
     for _ in range(2):
         normalized = re.sub(
-            r"(?<![A-Za-z0-9])(?:[A-Za-z]+|[\u0370-\u03ff])_[A-Za-z0-9+\-=]+",
+            r"(?<![A-Za-z0-9])(?:[A-Za-z]+|[\u0370-\u03ff])_"
+            r"[A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?",
             lambda match: latex_to_readable_math_text(match.group(0)),
             normalized,
         )
+    normalized = re.sub(
+        r"(?<![A-Za-z0-9])_([A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?)",
+        lambda match: _standalone_script_text(match.group(1)),
+        normalized,
+    )
     return _replace_bare_greek_names(normalized)
 
 
@@ -233,7 +246,7 @@ def latex_to_readable_math_text(text: str) -> str:
         cleaned,
     )
     cleaned = re.sub(
-        r"_([A-Za-z0-9+\-=]+)",
+        r"_([A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?)",
         lambda match: _script_text(match.group(1), subscript=True),
         cleaned,
     )
@@ -272,13 +285,20 @@ def _script_text(text: str, *, subscript: bool) -> str:
     table = _SUBSCRIPT_MAP if subscript else _SUPERSCRIPT_MAP
     converted = readable.translate(table)
     if converted != readable and all(
-        char in table.values() or char in {"₍", "₎", "⁽", "⁾", ","}
+        char in table.values() or char in {"₍", "₎", "⁽", "⁾", ",", ":"}
         for char in converted
     ):
         return converted
     if subscript:
         return f"_{readable}"
     return f"^({readable})" if len(readable) > 1 else f"^{readable}"
+
+
+def _standalone_script_text(text: str) -> str:
+    symbol = _replace_named_symbol(text)
+    if symbol != text:
+        return symbol
+    return _script_text(text, subscript=True)
 
 
 def _replace_named_symbol(name: str) -> str:

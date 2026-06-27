@@ -721,6 +721,12 @@ def test_normalizes_pdf_extracted_plain_math_text():
         pdf_converter._normalize_extracted_text("from 2pi to 10000 * 2pi")
         == "from 2π to 10000 * 2π"
     )
+    assert (
+        pdf_converter._normalize_extracted_text(
+            "p_theta(x_0):=int p_theta(x_0:T) dx_1:T, where x_1,...,x_T"
+        )
+        == "p_θ(x₀):=∫ p_θ(x₀:ₜ) dx₁:ₜ, where x₁,...,xₜ"
+    )
 
 
 def test_asset_image_source_prefers_block_anchor_over_earlier_reference():
