@@ -725,7 +725,7 @@ def test_normalizes_pdf_extracted_plain_math_text():
         pdf_converter._normalize_extracted_text(
             "p_theta(x_0):=int p_theta(x_0:T) dx_1:T, where x_1,...,x_T"
         )
-        == "p_θ(x₀):=∫ p_θ(x₀:ₜ) dx₁:ₜ, where x₁,...,xₜ"
+        == "p₍θ₎(x₀):=∫ p₍θ₎(x₀:ₜ) dx₁:ₜ, where x₁,...,xₜ"
     )
 
 

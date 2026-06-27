@@ -237,7 +237,7 @@ def latex_to_readable_math_text(text: str) -> str:
 
     cleaned = re.sub(
         r"_\\([a-zA-Z]+)",
-        lambda match: f"_{_replace_named_symbol(match.group(1))}",
+        lambda match: _script_text(match.group(1), subscript=True),
         cleaned,
     )
     cleaned = re.sub(
@@ -247,6 +247,11 @@ def latex_to_readable_math_text(text: str) -> str:
     )
     cleaned = re.sub(
         r"_([A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?)",
+        lambda match: _script_text(match.group(1), subscript=True),
+        cleaned,
+    )
+    cleaned = re.sub(
+        r"_([\u0370-\u03ff]+)",
         lambda match: _script_text(match.group(1), subscript=True),
         cleaned,
     )
@@ -290,6 +295,8 @@ def _script_text(text: str, *, subscript: bool) -> str:
     ):
         return converted
     if subscript:
+        if _is_greek_symbol(readable):
+            return f"₍{readable}₎"
         return f"_{readable}"
     return f"^({readable})" if len(readable) > 1 else f"^{readable}"
 
@@ -297,12 +304,16 @@ def _script_text(text: str, *, subscript: bool) -> str:
 def _standalone_script_text(text: str) -> str:
     symbol = _replace_named_symbol(text)
     if symbol != text:
-        return symbol
+        return f"₍{symbol}₎"
     return _script_text(text, subscript=True)
 
 
 def _replace_named_symbol(name: str) -> str:
     return _GREEK_REPLACEMENTS.get(name, _SYMBOL_REPLACEMENTS.get(name, name))
+
+
+def _is_greek_symbol(text: str) -> bool:
+    return bool(text) and all("\u0370" <= char <= "\u03ff" for char in text)
 
 
 def _replace_bare_greek_names(text: str) -> str:

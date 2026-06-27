@@ -9,7 +9,7 @@ def test_converts_common_latex_math_to_unicode_reader_text():
     assert latex_to_readable_math_text(r"10^(9)") == "10⁹"
     assert latex_to_readable_math_text(r"\sqrt{d_k}") == "√dₖ"
     assert latex_to_readable_math_text(r"p_\theta(x_{t-1} \mid x_t)") == (
-        "p_θ(xₜ₋₁|xₜ)"
+        "p₍θ₎(xₜ₋₁|xₜ)"
     )
     assert latex_to_readable_math_text(r"\prod_{s=1}^t \alpha_s") == "∏ₛ₌₁ᵗ αₛ"
 
@@ -19,7 +19,7 @@ def test_converts_pdf_extracted_plain_math_names_to_symbols():
         "p_theta(x_t) + sqrt(d_k) + 10^(9) + 2pi"
     )
 
-    assert readable == "p_θ(xₜ)+√dₖ+10⁹+2π"
+    assert readable == "p₍θ₎(xₜ)+√dₖ+10⁹+2π"
 
 
 def test_converts_standalone_pdf_subscript_fragments():
@@ -27,8 +27,8 @@ def test_converts_standalone_pdf_subscript_fragments():
         "p_theta(x_0):=int p_theta(x_0:T) dx_1:T, where x_1,...,x_T"
     )
 
-    assert readable == "p_θ(x₀):=∫ p_θ(x₀:ₜ) dx₁:ₜ, where x₁,...,xₜ"
-    assert normalize_readable_math_fragments("_theta _0 _T") == "θ ₀ ₜ"
+    assert readable == "p₍θ₎(x₀):=∫ p₍θ₎(x₀:ₜ) dx₁:ₜ, where x₁,...,xₜ"
+    assert normalize_readable_math_fragments("_theta _0 _T") == "₍θ₎ ₀ ₜ"
 
 
 def test_converts_attention_positional_encoding_equation_to_readable_text():
