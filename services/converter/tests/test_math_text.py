@@ -46,6 +46,14 @@ def test_converts_latex_bold_tilde_and_full_greek_alphabet_names():
     assert readable == "ζ η ι κ ξ υ χ ψ ϑ ϱ ς"
 
 
+def test_removes_backslashes_before_already_normalized_symbols():
+    readable = normalize_readable_math_fragments(
+        r"parameterization of \μ_θ predicts \ε and N(\0,I)"
+    )
+
+    assert readable == "parameterization of μ_{θ} predicts ε and N(0,I)"
+
+
 def test_converts_standalone_pdf_subscript_fragments():
     readable = normalize_readable_math_fragments(
         "p_theta(x_0):=int p_theta(x_0:T) dx_1:T, where x_1,...,x_T"

@@ -180,6 +180,7 @@ _SYMBOL_REPLACEMENTS = {
 
 
 def normalize_readable_math_fragments(text: str) -> str:
+    text = _strip_spurious_symbol_backslashes(text)
     normalized = re.sub(
         r"sqrt\([^()]+\)",
         lambda match: latex_to_readable_math_text(match.group(0)),
@@ -203,13 +204,13 @@ def normalize_readable_math_fragments(text: str) -> str:
     for _ in range(2):
         normalized = re.sub(
             r"(?<![A-Za-z0-9])(?:[A-Za-z]+|[\u0370-\u03ff])_"
-            r"[A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?"
+            r"[A-Za-z0-9+\-=\u0370-\u03ff]+(?::[A-Za-z0-9\u0370-\u03ff]+)?"
             r"(?:\^[A-Za-z0-9+\-]+|\^\([^)]+\))?",
             lambda match: latex_to_readable_math_text(match.group(0)),
             normalized,
         )
     normalized = re.sub(
-        r"(?<![A-Za-z0-9])_([A-Za-z0-9+\-=]+(?::[A-Za-z0-9]+)?)",
+        r"(?<![A-Za-z0-9])_([A-Za-z0-9+\-=\u0370-\u03ff]+(?::[A-Za-z0-9\u0370-\u03ff]+)?)",
         lambda match: _standalone_script_text(match.group(1)),
         normalized,
     )
@@ -328,6 +329,7 @@ def latex_to_readable_math_text(text: str) -> str:
     cleaned = cleaned.replace("*", "×")
     cleaned = re.sub(r"\\b([A-Za-z])(?![A-Za-z])", r"\1", cleaned)
     cleaned = re.sub(r"\\([A-Za-z]+)\*?", lambda match: match.group(1), cleaned)
+    cleaned = _strip_spurious_symbol_backslashes(cleaned)
     cleaned = cleaned.replace(r"\{", "{").replace(r"\}", "}")
     cleaned, protected_subscripts = _protect_structured_subscripts(cleaned)
     cleaned = cleaned.replace("{", "").replace("}", "")
@@ -385,6 +387,10 @@ def _restore_structured_subscripts(text: str, protected: list[str]) -> str:
 
 def _replace_named_symbol(name: str) -> str:
     return _GREEK_REPLACEMENTS.get(name, _SYMBOL_REPLACEMENTS.get(name, name))
+
+
+def _strip_spurious_symbol_backslashes(text: str) -> str:
+    return re.sub(r"\\(?=[\u0370-\u03ff0-9])", "", text)
 
 
 def _is_greek_symbol(text: str) -> bool:
