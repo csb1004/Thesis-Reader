@@ -12,6 +12,7 @@ import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
 import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
 import 'package:thesis_reader/features/ai/domain/summary_service.dart';
 import 'package:thesis_reader/features/ai/domain/translation_service.dart';
+import 'package:thesis_reader/features/reader/domain/readable_math_text.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/viewer_settings_sheet.dart';
@@ -1409,7 +1410,7 @@ final class _ReferenceSelectableTextState
     ];
     final validSpans = _validReferenceSpans(widget.text, renderableSpans);
 
-    if (validSpans.isEmpty) {
+    if (validSpans.isEmpty && !hasReadableMathMarkers(widget.text)) {
       return SelectableText(
         widget.text,
         style: widget.style,
@@ -1424,7 +1425,12 @@ final class _ReferenceSelectableTextState
 
     for (final span in validSpans) {
       if (offset < span.start) {
-        children.add(TextSpan(text: widget.text.substring(offset, span.start)));
+        _appendReadableMathSpans(
+          context,
+          children,
+          widget.text.substring(offset, span.start),
+          widget.style,
+        );
       }
 
       if (span.kind == ReferenceKind.citation) {
@@ -1469,7 +1475,12 @@ final class _ReferenceSelectableTextState
     }
 
     if (offset < widget.text.length) {
-      children.add(TextSpan(text: widget.text.substring(offset)));
+      _appendReadableMathSpans(
+        context,
+        children,
+        widget.text.substring(offset),
+        widget.style,
+      );
     }
 
     return SelectableText.rich(
@@ -1477,6 +1488,53 @@ final class _ReferenceSelectableTextState
       textScaler: TextScaler.noScaling,
       contextMenuBuilder: _buildContextMenu,
     );
+  }
+
+  void _appendReadableMathSpans(
+    BuildContext context,
+    List<InlineSpan> children,
+    String text,
+    TextStyle baseStyle,
+  ) {
+    if (text.isEmpty) {
+      return;
+    }
+    if (!hasReadableMathMarkers(text)) {
+      children.add(TextSpan(text: text));
+      return;
+    }
+
+    final baseFontSize =
+        baseStyle.fontSize ?? DefaultTextStyle.of(context).style.fontSize ?? 16;
+    final subscriptStyle = baseStyle.copyWith(
+      fontSize: baseFontSize * 0.72,
+      height: 1,
+    );
+
+    for (final token in parseReadableMathText(text)) {
+      if (token.text.isEmpty) {
+        continue;
+      }
+      if (!token.isSubscript) {
+        children.add(TextSpan(text: token.text));
+        continue;
+      }
+
+      children.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: Transform.translate(
+            offset: Offset(0, baseFontSize * 0.24),
+            child: Text(
+              token.text,
+              style: subscriptStyle,
+              textScaler: TextScaler.noScaling,
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildContextMenu(

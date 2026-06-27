@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/painting.dart';
+import 'package:thesis_reader/features/reader/domain/readable_math_text.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 
 const _pageBottomGuardLines = 1;
@@ -279,25 +280,31 @@ final class _ReaderMetrics {
     if (normalized.isEmpty) {
       return const [_TextLine(0, 0)];
     }
+    final layoutText = buildReadableMathLayoutText(text);
 
     final painter = TextPainter(
-      text: TextSpan(text: text, style: textStyle),
+      text: TextSpan(text: layoutText.text, style: textStyle),
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: contentWidth);
     final lines = <_TextLine>[];
     var offset = 0;
-    while (offset < text.length) {
+    while (offset < layoutText.text.length) {
       final boundary = painter.getLineBoundary(TextPosition(offset: offset));
       var start = boundary.start;
       var end = boundary.end;
-      while (start < end && text[start].trim().isEmpty) {
+      while (start < end && layoutText.text[start].trim().isEmpty) {
         start += 1;
       }
-      while (end > start && text[end - 1].trim().isEmpty) {
+      while (end > start && layoutText.text[end - 1].trim().isEmpty) {
         end -= 1;
       }
       if (start < end) {
-        lines.add(_TextLine(start, end));
+        lines.add(
+          _TextLine(
+            layoutText.sourceOffsetAt(start),
+            layoutText.sourceOffsetAt(end),
+          ),
+        );
       }
       final nextOffset = math.max(boundary.end, offset + 1);
       offset = nextOffset;

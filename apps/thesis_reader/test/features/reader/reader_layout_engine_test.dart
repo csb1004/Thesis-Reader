@@ -157,6 +157,51 @@ void main() {
     expect(reserved.linesPerPage, lessThan(full.linesPerPage));
   });
 
+  test('does not split readable math subscript markers across pages', () {
+    final package = DocumentPackage(
+      packageVersion: 1,
+      documentId: 'doc-1',
+      metadata: const DocumentMetadata(
+        title: 'Reader Test',
+        sourceFilename: 'reader.pdf',
+        originalPdfSha256: 'abc123',
+      ),
+      sections: const [
+        DocumentSection(id: 's1', title: 'Body', blockIds: ['b1']),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'b1',
+          sectionId: 's1',
+          text: 'Diffusion model ${'p_{θ}(x₀) remains readable. ' * 80}',
+        ),
+      ],
+      assets: const [],
+    );
+
+    final layout = ReaderLayoutEngine.paginate(
+      package,
+      const ReaderSettings(fontScale: 1.4, lineHeight: 1.5),
+      const ReaderViewport(width: 320, height: 260),
+    );
+
+    final chunks = [
+      for (final page in layout.pages)
+        for (final item in page.items)
+          if (item.text case final text?) text,
+    ];
+
+    expect(chunks, isNotEmpty);
+    expect(
+      chunks.any((chunk) => chunk.contains('p_{') && !chunk.contains('p_{θ}')),
+      isFalse,
+    );
+    expect(
+      chunks.any((chunk) => chunk.contains('{θ}') && !chunk.contains('p_{θ}')),
+      isFalse,
+    );
+  });
+
   test(
     'keeps section headings with following body instead of orphaning them',
     () {
@@ -362,65 +407,68 @@ void main() {
     );
   });
 
-  test('keeps compact equation blocks with surrounding text when page has room', () {
-    const package = DocumentPackage(
-      packageVersion: 1,
-      documentId: 'doc-1',
-      metadata: DocumentMetadata(
-        title: 'Reader Test',
-        sourceFilename: 'reader.pdf',
-        originalPdfSha256: 'abc123',
-      ),
-      sections: [
-        DocumentSection(
-          id: 's1',
-          title: 'Body',
-          blockIds: ['before', 'equation', 'after'],
+  test(
+    'keeps compact equation blocks with surrounding text when page has room',
+    () {
+      const package = DocumentPackage(
+        packageVersion: 1,
+        documentId: 'doc-1',
+        metadata: DocumentMetadata(
+          title: 'Reader Test',
+          sourceFilename: 'reader.pdf',
+          originalPdfSha256: 'abc123',
         ),
-      ],
-      blocks: [
-        DocumentBlock.paragraph(
-          id: 'before',
-          sectionId: 's1',
-          text:
-              'We compute the attention function on a set of queries '
-              'simultaneously, packed together into a matrix Q.',
-        ),
-        DocumentBlock(
-          id: 'equation',
-          sectionId: 's1',
-          kind: BlockKind.equation,
-          assetId: 'eq-1',
-        ),
-        DocumentBlock.paragraph(
-          id: 'after',
-          sectionId: 's1',
-          text:
-              'The two most commonly used attention functions are additive '
-              'attention and dot-product attention.',
-        ),
-      ],
-      assets: [
-        DocumentAsset(
-          id: 'eq-1',
-          kind: AssetKind.equation,
-          label: '(1)',
-          relativePath: 'assets/eq-1.png',
-        ),
-      ],
-    );
+        sections: [
+          DocumentSection(
+            id: 's1',
+            title: 'Body',
+            blockIds: ['before', 'equation', 'after'],
+          ),
+        ],
+        blocks: [
+          DocumentBlock.paragraph(
+            id: 'before',
+            sectionId: 's1',
+            text:
+                'We compute the attention function on a set of queries '
+                'simultaneously, packed together into a matrix Q.',
+          ),
+          DocumentBlock(
+            id: 'equation',
+            sectionId: 's1',
+            kind: BlockKind.equation,
+            assetId: 'eq-1',
+          ),
+          DocumentBlock.paragraph(
+            id: 'after',
+            sectionId: 's1',
+            text:
+                'The two most commonly used attention functions are additive '
+                'attention and dot-product attention.',
+          ),
+        ],
+        assets: [
+          DocumentAsset(
+            id: 'eq-1',
+            kind: AssetKind.equation,
+            label: '(1)',
+            relativePath: 'assets/eq-1.png',
+          ),
+        ],
+      );
 
-    final layout = ReaderLayoutEngine.paginate(
-      package,
-      const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
-      const ReaderViewport(width: 360, height: 420),
-    );
+      final layout = ReaderLayoutEngine.paginate(
+        package,
+        const ReaderSettings(fontScale: 1.0, lineHeight: 1.5),
+        const ReaderViewport(width: 360, height: 420),
+      );
 
-    expect(
-      layout.pages.first.blockIds,
-      containsAllInOrder(['before', 'equation', 'after']),
-    );
-  });
+      expect(
+        layout.pages.first.blockIds,
+        containsAllInOrder(['before', 'equation', 'after']),
+      );
+    },
+  );
 
   test('first page chunk does not exceed rendered content height', () {
     final package = DocumentPackage(

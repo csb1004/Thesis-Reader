@@ -272,7 +272,9 @@ def latex_to_readable_math_text(text: str) -> str:
     cleaned = re.sub(r"\\b([A-Za-z])(?![A-Za-z])", r"\1", cleaned)
     cleaned = re.sub(r"\\([A-Za-z]+)\*?", lambda match: match.group(1), cleaned)
     cleaned = cleaned.replace(r"\{", "{").replace(r"\}", "}")
+    cleaned, protected_subscripts = _protect_structured_subscripts(cleaned)
     cleaned = cleaned.replace("{", "").replace("}", "")
+    cleaned = _restore_structured_subscripts(cleaned, protected_subscripts)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     cleaned = re.sub(r"\s*([_=+\-/:<>|])\s*", r"\1", cleaned)
     cleaned = re.sub(r"\s*([(),;])\s*", r"\1", cleaned)
@@ -296,7 +298,7 @@ def _script_text(text: str, *, subscript: bool) -> str:
         return converted
     if subscript:
         if _is_greek_symbol(readable):
-            return f"₍{readable}₎"
+            return f"_{{{readable}}}"
         return f"_{readable}"
     return f"^({readable})" if len(readable) > 1 else f"^{readable}"
 
@@ -304,8 +306,24 @@ def _script_text(text: str, *, subscript: bool) -> str:
 def _standalone_script_text(text: str) -> str:
     symbol = _replace_named_symbol(text)
     if symbol != text:
-        return f"₍{symbol}₎"
+        return f"_{{{symbol}}}"
     return _script_text(text, subscript=True)
+
+
+def _protect_structured_subscripts(text: str) -> tuple[str, list[str]]:
+    protected: list[str] = []
+
+    def store(match: re.Match[str]) -> str:
+        protected.append(match.group(1))
+        return f"__SUBSCRIPT_MARKER_{len(protected) - 1}__"
+
+    return re.sub(r"_\{([^{}]+)\}", store, text), protected
+
+
+def _restore_structured_subscripts(text: str, protected: list[str]) -> str:
+    for index, value in enumerate(protected):
+        text = text.replace(f"__SUBSCRIPT_MARKER_{index}__", f"_{{{value}}}")
+    return text
 
 
 def _replace_named_symbol(name: str) -> str:
