@@ -424,6 +424,74 @@ void main() {
     );
   });
 
+  testWidgets('opens internal section references as bottom sheets', (
+    tester,
+  ) async {
+    const sectionReferenceText =
+        'See Section Reasoning About Action And Planning for details.';
+    final package = _packageWithCustomBlocks(const [
+      DocumentBlock.paragraph(
+        id: 'b1',
+        sectionId: 's1',
+        text: sectionReferenceText,
+        referenceSpans: [
+          ReferenceSpan(
+            start: 12,
+            end: 47,
+            targetAssetId: '',
+            kind: ReferenceKind.reference,
+            label: 'Section: Reasoning About Action And Planning',
+          ),
+        ],
+      ),
+      DocumentBlock(
+        id: 'heading-1',
+        sectionId: 's1',
+        kind: BlockKind.heading,
+        text: 'Reasoning About Action And Planning',
+      ),
+      DocumentBlock.paragraph(
+        id: 'b2',
+        sectionId: 's1',
+        text: 'This section explains action and planning.',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    final referenceSpan = _textSpanWithText(
+      tester,
+      'Reasoning About Action And Planning',
+    );
+
+    expect(referenceSpan.recognizer, isNotNull);
+    expect(referenceSpan.style?.decoration, TextDecoration.underline);
+
+    (referenceSpan.recognizer! as TapGestureRecognizer).onTap!();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('reader-inline-reference-bottom-sheet')),
+      findsOneWidget,
+    );
+    final sheet = find.byKey(const Key('reader-inline-reference-bottom-sheet'));
+    expect(
+      find.text('Section: Reasoning About Action And Planning'),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.text('This section explains action and planning.'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('reader selection uses thesis actions instead of platform menu', (
     tester,
   ) async {

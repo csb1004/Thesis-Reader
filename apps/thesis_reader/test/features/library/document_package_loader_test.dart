@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:document_contract/document_contract.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:thesis_reader/features/library/data/document_package_loader.dart';
@@ -177,6 +178,79 @@ void main() {
     expect(
       loaded?.package.blocks.single.text,
       'transduction models Decoder: The stack is repeated.',
+    );
+  });
+
+  test('normalizes cached raw section labels into internal references', () async {
+    final temp = await Directory.systemTemp.createTemp('package_loader_test');
+    final packageFile = File(
+      p.join(temp.path, 'packages', 'doc-1', 'package.json'),
+    );
+    await packageFile.parent.create(recursive: true);
+    await packageFile.writeAsString(
+      jsonEncode({
+        'packageVersion': 1,
+        'documentId': 'doc-1',
+        'metadata': {
+          'title': 'Cached title',
+          'sourceFilename': 'paper.pdf',
+          'originalPdfSha256': 'abc123',
+          'converterVersion': 'mvp-1',
+        },
+        'sections': [
+          {
+            'id': 'sec-1',
+            'title': 'Document',
+            'blockIds': ['block-1', 'heading-1'],
+          },
+        ],
+        'blocks': [
+          {
+            'id': 'block-1',
+            'sectionId': 'sec-1',
+            'kind': 'paragraph',
+            'text':
+                'reasoning about action (Section Section areas:ReasoningAboutActionAndPlanning), '
+                'description logics (Section Section areas:DLsOntologies).',
+          },
+          {
+            'id': 'heading-1',
+            'sectionId': 'sec-1',
+            'kind': 'heading',
+            'text': 'Reasoning About Action And Planning',
+          },
+        ],
+        'assets': [],
+      }),
+    );
+
+    final loaded = await DocumentPackageLoader.load(
+      documentId: 'doc-1',
+      appDirectory: temp,
+      storedPackagePath: null,
+    );
+
+    final paragraph = loaded!.package.blocks.first;
+
+    expect(paragraph.text, isNot(contains('Section areas:')));
+    expect(paragraph.text, isNot(contains('Section Section')));
+    expect(
+      paragraph.text,
+      contains('Section Reasoning About Action And Planning'),
+    );
+    expect(paragraph.text, contains('Section DLs Ontologies'));
+    expect(
+      [(paragraph.referenceSpans[0].kind, paragraph.referenceSpans[0].label)],
+      [
+        (
+          ReferenceKind.reference,
+          'Section: Reasoning About Action And Planning',
+        ),
+      ],
+    );
+    expect(
+      [(paragraph.referenceSpans[1].kind, paragraph.referenceSpans[1].label)],
+      [(ReferenceKind.reference, 'Section: DLs Ontologies')],
     );
   });
 

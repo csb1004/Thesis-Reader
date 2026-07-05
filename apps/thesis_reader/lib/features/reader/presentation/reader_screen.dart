@@ -229,6 +229,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               bottomReserve: bottomReserve,
               onAssetPressed: _openAsset,
               onCitationPressed: _openCitationReference,
+              onReferencePressed: _openInlineReference,
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
@@ -243,6 +244,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
               bottomReserve: bottomReserve,
               onAssetPressed: _openAsset,
               onCitationPressed: _openCitationReference,
+              onReferencePressed: _openInlineReference,
               onSimpleTranslateSelection: _simpleTranslateSelection,
               onTranslateSelection: _translateSelection,
               onAddVocabulary: _addSelectedVocabulary,
@@ -430,6 +432,21 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         citationLabel: citationLabel,
         references: references,
       ),
+    );
+  }
+
+  void _openInlineReference(String referenceLabel) {
+    final package = widget.package;
+    if (package == null) {
+      return;
+    }
+
+    final blocks = _blocksForInlineReference(package, referenceLabel);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) =>
+          _InlineReferenceViewerSheet(label: referenceLabel, blocks: blocks),
     );
   }
 
@@ -828,6 +845,7 @@ final class _PageModeReader extends StatelessWidget {
     required this.bottomReserve,
     required this.onAssetPressed,
     required this.onCitationPressed,
+    required this.onReferencePressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -843,6 +861,7 @@ final class _PageModeReader extends StatelessWidget {
   final double bottomReserve;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final ValueChanged<String> onCitationPressed;
+  final ValueChanged<String> onReferencePressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -890,6 +909,7 @@ final class _PageModeReader extends StatelessWidget {
                               addBottomSpacing: !item.continuesAfter,
                               onAssetPressed: onAssetPressed,
                               onCitationPressed: onCitationPressed,
+                              onReferencePressed: onReferencePressed,
                               onSimpleTranslateSelection:
                                   onSimpleTranslateSelection,
                               onTranslateSelection: onTranslateSelection,
@@ -1084,6 +1104,7 @@ final class _ScrollModeReader extends StatelessWidget {
     required this.bottomReserve,
     required this.onAssetPressed,
     required this.onCitationPressed,
+    required this.onReferencePressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -1098,6 +1119,7 @@ final class _ScrollModeReader extends StatelessWidget {
   final double bottomReserve;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final ValueChanged<String> onCitationPressed;
+  final ValueChanged<String> onReferencePressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -1132,6 +1154,7 @@ final class _ScrollModeReader extends StatelessWidget {
                   assetsById: assetsById,
                   onAssetPressed: onAssetPressed,
                   onCitationPressed: onCitationPressed,
+                  onReferencePressed: onReferencePressed,
                   onSimpleTranslateSelection: onSimpleTranslateSelection,
                   onTranslateSelection: onTranslateSelection,
                   onAddVocabulary: onAddVocabulary,
@@ -1154,6 +1177,7 @@ final class _ReaderBlock extends StatelessWidget {
     this.addBottomSpacing = true,
     required this.onAssetPressed,
     required this.onCitationPressed,
+    required this.onReferencePressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -1166,6 +1190,7 @@ final class _ReaderBlock extends StatelessWidget {
   final bool addBottomSpacing;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final ValueChanged<String> onCitationPressed;
+  final ValueChanged<String> onReferencePressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -1252,6 +1277,7 @@ final class _ReaderBlock extends StatelessWidget {
               : textStyle,
           onAssetPressed: onAssetPressed,
           onCitationPressed: onCitationPressed,
+          onReferencePressed: onReferencePressed,
           onSimpleTranslateSelection: onSimpleTranslateSelection,
           onTranslateSelection: onTranslateSelection,
           onAddVocabulary: onAddVocabulary,
@@ -1451,6 +1477,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
     required this.style,
     required this.onAssetPressed,
     required this.onCitationPressed,
+    required this.onReferencePressed,
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
@@ -1463,6 +1490,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
   final TextStyle style;
   final ValueChanged<DocumentAsset> onAssetPressed;
   final ValueChanged<String> onCitationPressed;
+  final ValueChanged<String> onReferencePressed;
   final _SelectionAction onSimpleTranslateSelection;
   final _SelectionAction onTranslateSelection;
   final _SelectionAction onAddVocabulary;
@@ -1489,6 +1517,7 @@ final class _ReferenceSelectableTextState
     final renderableSpans = [
       for (final span in widget.referenceSpans)
         if (span.kind == ReferenceKind.citation ||
+            span.kind == ReferenceKind.reference ||
             widget.assetsById.containsKey(span.targetAssetId))
           span,
     ];
@@ -1535,6 +1564,28 @@ final class _ReferenceSelectableTextState
               color: accentColor,
               fontStyle: FontStyle.italic,
               fontFeatures: const [FontFeature('ital')],
+            ),
+            recognizer: recognizer,
+          ),
+        );
+        offset = span.end;
+        continue;
+      }
+
+      if (span.kind == ReferenceKind.reference) {
+        final label = span.label ?? widget.text.substring(span.start, span.end);
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () => widget.onReferencePressed(label);
+        _recognizers.add(recognizer);
+
+        children.add(
+          TextSpan(
+            text: widget.text.substring(span.start, span.end),
+            style: TextStyle(
+              color: accentColor,
+              decoration: TextDecoration.underline,
+              decorationColor: accentColor,
+              decorationThickness: 1.5,
             ),
             recognizer: recognizer,
           ),
@@ -1831,6 +1882,67 @@ List<DocumentBlock> _referenceBlocksForCitation(
   return references;
 }
 
+List<DocumentBlock> _blocksForInlineReference(
+  DocumentPackage package,
+  String referenceLabel,
+) {
+  final lookupText = _inlineReferenceLookupText(referenceLabel);
+  if (lookupText.isEmpty) {
+    return const [];
+  }
+
+  for (var index = 0; index < package.blocks.length; index++) {
+    final block = package.blocks[index];
+    if (block.kind != BlockKind.heading || block.text == null) {
+      continue;
+    }
+    if (_normalizeInlineReferenceLookup(block.text!) != lookupText) {
+      continue;
+    }
+
+    final blocks = <DocumentBlock>[block];
+    for (
+      var nextIndex = index + 1;
+      nextIndex < package.blocks.length && blocks.length < 4;
+      nextIndex++
+    ) {
+      final candidate = package.blocks[nextIndex];
+      if (candidate.kind == BlockKind.heading) {
+        break;
+      }
+      if (candidate.text case final text? when text.trim().isNotEmpty) {
+        blocks.add(candidate);
+      }
+    }
+    return blocks;
+  }
+
+  return const [];
+}
+
+String _inlineReferenceLookupText(String label) {
+  var text = label.trim();
+  text = text.replaceFirst(
+    RegExp(
+      r'^(Algorithm|Equation|Figure|Page|Section|Table):\s*',
+      caseSensitive: false,
+    ),
+    '',
+  );
+  text = text.replaceFirst(
+    RegExp(
+      r'^(Algorithm|Equation|Figure|Page|Section|Table)\s+',
+      caseSensitive: false,
+    ),
+    '',
+  );
+  return _normalizeInlineReferenceLookup(text);
+}
+
+String _normalizeInlineReferenceLookup(String text) {
+  return text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+}
+
 final class _AssetViewerSheet extends StatelessWidget {
   const _AssetViewerSheet({required this.asset});
 
@@ -1841,6 +1953,69 @@ final class _AssetViewerSheet extends StatelessWidget {
     return SafeArea(
       key: const Key('reader-asset-bottom-sheet'),
       child: _AssetDetailPanel(asset: asset),
+    );
+  }
+}
+
+final class _InlineReferenceViewerSheet extends StatelessWidget {
+  const _InlineReferenceViewerSheet({
+    required this.label,
+    required this.blocks,
+  });
+
+  final String label;
+  final List<DocumentBlock> blocks;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final visibleBlocks = [
+      for (final block in blocks)
+        if (block.text case final text? when text.trim().isNotEmpty) block,
+    ];
+
+    return SafeArea(
+      key: const Key('reader-inline-reference-bottom-sheet'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.link_outlined, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label, style: textTheme.titleLarge),
+                      Text('Reference', style: textTheme.labelMedium),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (visibleBlocks.isEmpty)
+              SelectableText(label, style: textTheme.bodyLarge)
+            else
+              for (var index = 0; index < visibleBlocks.length; index++) ...[
+                SelectableText(
+                  visibleBlocks[index].text ?? '',
+                  style: visibleBlocks[index].kind == BlockKind.heading
+                      ? textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        )
+                      : textTheme.bodyLarge,
+                ),
+                if (index != visibleBlocks.length - 1)
+                  const SizedBox(height: 12),
+              ],
+          ],
+        ),
+      ),
     );
   }
 }

@@ -294,6 +294,50 @@ Transformers rely on attention \citep{vaswani2017attention,kingma2013auto}.
     ]
 
 
+def test_rewrites_latex_section_refs_to_clean_reference_spans(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Internal References}
+\begin{document}
+\section{Reasoning About Action And Planning}
+\label{Section areas:ReasoningAboutActionAndPlanning}
+Other areas include reasoning about action
+(Section~\ref*{Section areas:ReasoningAboutActionAndPlanning}),
+description logics and ontologies
+(\Autoref{Section areas:DLsOntologies}), and
+argumentation (Section~\Ref{Section areas:Argumentation}).
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="paper.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "1234.56789", "mainTex": "main.tex"},
+    )
+
+    paragraph = next(block for block in package.blocks if block.kind == BlockKind.paragraph)
+
+    assert "Section areas:" not in paragraph.text
+    assert "Section Section" not in paragraph.text
+    assert (
+        "Section Reasoning About Action And Planning" in paragraph.text
+    )
+    assert "Section DLs Ontologies" in paragraph.text
+    assert "Section Argumentation" in paragraph.text
+    assert [(span.kind, span.label) for span in paragraph.referenceSpans] == [
+        (ReferenceKind.reference, "Section: Reasoning About Action And Planning"),
+        (ReferenceKind.reference, "Section: DLs Ontologies"),
+        (ReferenceKind.reference, "Section: Argumentation"),
+    ]
+
+
 def test_preserves_common_latex_text_structure_and_style_spans(tmp_path):
     main_tex = tmp_path / "main.tex"
     main_tex.write_text(

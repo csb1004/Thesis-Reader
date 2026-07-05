@@ -459,11 +459,12 @@ def _clean_text_metadata(
 ) -> tuple[str, list[TextStyleSpan], list[ReferenceSpan]]:
     style_markers: list[dict[str, bool]] = []
     citation_markers: list[str] = []
+    reference_markers: list[str] = []
     cleaned = text.replace("~", " ")
     cleaned = re.sub(r"\\(?:maketitle|begin\{abstract\}|end\{abstract\})", " ", cleaned)
     cleaned = _mark_text_style_commands(cleaned, style_markers)
     cleaned = _replace_citations(cleaned, citation_numbers or {}, citation_markers)
-    cleaned = _replace_references(cleaned)
+    cleaned = _replace_references(cleaned, reference_markers)
     cleaned = _replace_inline_math(cleaned)
     cleaned = re.sub(r"\\\\(?:\[[^\]]+\])?", f" {LINE_BREAK_MARKER} ", cleaned)
     cleaned = re.sub(
@@ -476,7 +477,12 @@ def _clean_text_metadata(
     cleaned = re.sub(r"\\[a-zA-Z]+\*?", " ", cleaned)
     cleaned = cleaned.replace("{", "").replace("}", "")
     cleaned = _normalize_text_whitespace(cleaned)
-    return _extract_marked_text_spans(cleaned, style_markers, citation_markers)
+    return _extract_marked_text_spans(
+        cleaned,
+        style_markers,
+        citation_markers,
+        reference_markers,
+    )
 
 
 def _mark_text_style_commands(text: str, markers: list[dict[str, bool]]) -> str:
@@ -571,13 +577,15 @@ def _extract_marked_text_spans(
     text: str,
     style_markers: list[dict[str, bool]],
     citation_markers: list[str],
+    reference_markers: list[str],
 ) -> tuple[str, list[TextStyleSpan], list[ReferenceSpan]]:
     token_pattern = re.compile(
-        r"@@(?P<kind>STYLE|CITE)_(?P<index>\d+)_(?P<edge>START|END)@@"
+        r"@@(?P<kind>STYLE|CITE|REF)_(?P<index>\d+)_(?P<edge>START|END)@@"
     )
     output: list[str] = []
     style_starts: dict[int, int] = {}
     citation_starts: dict[int, int] = {}
+    reference_starts: dict[int, int] = {}
     text_spans: list[TextStyleSpan] = []
     reference_spans: list[ReferenceSpan] = []
     cursor = 0
@@ -606,9 +614,9 @@ def _extract_marked_text_spans(
                             highlight=flags["highlight"],
                         )
                     )
-        elif edge == "START":
+        elif match.group("kind") == "CITE" and edge == "START":
             citation_starts[index] = output_length
-        else:
+        elif match.group("kind") == "CITE":
             start = citation_starts.pop(index, output_length)
             if output_length > start:
                 reference_spans.append(
@@ -620,6 +628,20 @@ def _extract_marked_text_spans(
                         label=citation_markers[index],
                     )
                 )
+        elif edge == "START":
+            reference_starts[index] = output_length
+        else:
+            start = reference_starts.pop(index, output_length)
+            if output_length > start:
+                reference_spans.append(
+                    ReferenceSpan(
+                        start=start,
+                        end=output_length,
+                        targetAssetId="",
+                        kind=ReferenceKind.reference,
+                        label=reference_markers[index],
+                    )
+                )
         cursor = match.end()
 
     literal = text[cursor:]
@@ -628,27 +650,62 @@ def _extract_marked_text_spans(
     return output_text, text_spans, reference_spans
 
 
-def _replace_references(text: str) -> str:
+def _replace_references(text: str, markers: list[str]) -> str:
     pattern = re.compile(
-        r"\\(?P<command>eqref|labelcref|cref|Cref|autoref|ref)(?:\[[^\]]*\])?\{(?P<labels>[^}]+)\}"
+        r"\\(?P<command>eqref|labelcref|cref|Cref|autoref|Autoref|ref|Ref|vref|Vref|pageref|nameref)\*?(?:\[[^\]]*\])?\{(?P<labels>[^}]+)\}"
     )
 
     def replace(match: re.Match[str]) -> str:
         command = match.group("command")
-        labels = [
-            _human_readable_reference_label(command, label.strip())
-            for label in match.group("labels").split(",")
-            if label.strip()
-        ]
+        labels: list[str] = []
+        preceding_text = text[: match.start()]
+        for label in match.group("labels").split(","):
+            label = label.strip()
+            if not label:
+                continue
+            display, marker_label = _human_readable_reference_label(
+                command,
+                label,
+                preceding_text,
+            )
+            marker_id = len(markers)
+            markers.append(marker_label)
+            labels.append(f"@@REF_{marker_id}_START@@{display}@@REF_{marker_id}_END@@")
         return ", ".join(labels)
 
     return pattern.sub(replace, text)
 
 
-def _human_readable_reference_label(command: str, label: str) -> str:
+def _human_readable_reference_label(
+    command: str,
+    label: str,
+    preceding_text: str,
+) -> tuple[str, str]:
+    prefix_name, cleaned_body = _reference_type_and_body(command, label)
+    include_prefix = prefix_name is not None and not _preceded_by_reference_word(
+        preceding_text,
+        prefix_name,
+    )
+    display = f"{prefix_name} {cleaned_body}" if include_prefix else cleaned_body
+    marker_label = f"{prefix_name}: {cleaned_body}" if prefix_name else cleaned_body
+    return display, marker_label
+
+
+def _reference_type_and_body(command: str, label: str) -> tuple[str | None, str]:
     prefix, _, body = label.partition(":")
-    cleaned_body = (body or prefix).replace("_", " ").replace("-", " ").strip()
-    prefix_name = {
+    cleaned_body = _humanize_reference_body(body or prefix)
+    prefix_name = _reference_type_for_prefix(prefix)
+    if command.lower() == "eqref":
+        prefix_name = "Equation"
+    if command.lower() == "pageref":
+        prefix_name = "Page"
+    return prefix_name, cleaned_body
+
+
+def _reference_type_for_prefix(prefix: str) -> str | None:
+    normalized = _humanize_reference_body(prefix).lower()
+    first_word = normalized.split(" ", 1)[0] if normalized else ""
+    return {
         "alg": "Algorithm",
         "algorithm": "Algorithm",
         "eq": "Equation",
@@ -657,12 +714,32 @@ def _human_readable_reference_label(command: str, label: str) -> str:
         "figure": "Figure",
         "sec": "Section",
         "section": "Section",
+        "sections": "Section",
         "tab": "Table",
         "table": "Table",
-    }.get(prefix.lower())
-    if command == "eqref":
-        prefix_name = "Equation"
-    return f"{prefix_name} {cleaned_body}" if prefix_name else cleaned_body
+    }.get(first_word)
+
+
+def _humanize_reference_body(value: str) -> str:
+    value = value.replace("_", " ").replace("-", " ").strip()
+    value = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", value)
+    value = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z]{2,})", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _preceded_by_reference_word(text: str, prefix_name: str) -> bool:
+    aliases = {
+        "Algorithm": r"(algorithm|alg\.?)",
+        "Equation": r"(equation|eq\.?)",
+        "Figure": r"(figure|fig\.?)",
+        "Page": r"(page|p\.?)",
+        "Section": r"(section|sections|sec\.?)",
+        "Table": r"(table|tab\.?)",
+    }.get(prefix_name)
+    if aliases is None:
+        return False
+    tail = re.sub(r"[\s~]+", " ", text[-80:]).rstrip()
+    return re.search(rf"(?i){aliases}$", tail) is not None
 
 
 def _replace_inline_math(text: str) -> str:
