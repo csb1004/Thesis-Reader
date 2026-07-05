@@ -52,6 +52,10 @@ q(x_t \mid x_0) = \mathcal{N}(x_t; \sqrt{\bar\alpha_t}x_0, (1-\bar\alpha_t)I)
         block.kind == BlockKind.reference and "Sohl-Dickstein" in (block.text or "")
         for block in package.blocks
     )
+    assert [section.title for section in package.sections[:2]] == [
+        "Abstract",
+        "Background",
+    ]
     assert (tmp_path / "out" / "package.json").exists()
 
 
@@ -294,20 +298,21 @@ Transformers rely on attention \citep{vaswani2017attention,kingma2013auto}.
     ]
 
 
-def test_rewrites_latex_section_refs_to_clean_reference_spans(tmp_path):
+def test_resolves_latex_section_refs_to_numbered_plain_text(tmp_path):
     main_tex = tmp_path / "main.tex"
     main_tex.write_text(
         r"""
 \documentclass{article}
 \title{Internal References}
 \begin{document}
-\section{Reasoning About Action And Planning}
-\label{Section areas:ReasoningAboutActionAndPlanning}
-Other areas include reasoning about action
-(Section~\ref*{Section areas:ReasoningAboutActionAndPlanning}),
-description logics and ontologies
-(\Autoref{Section areas:DLsOntologies}), and
-argumentation (Section~\Ref{Section areas:Argumentation}).
+\section{Foundations}
+\label{Section areas:Foundations}
+The first section is background.
+\section{Non-monotonic reasoning}
+\subsection{Default logic}
+\label{Section areas.DefaultLogic}
+\subsection{Answer set programming}
+\label{Section areas.ASP}
 Answer set programming (\autoref{Section areas.ASP}) is related.
 \end{document}
 """,
@@ -323,21 +328,22 @@ Answer set programming (\autoref{Section areas.ASP}) is related.
         source_info={"arxivId": "1234.56789", "mainTex": "main.tex"},
     )
 
-    paragraph = next(block for block in package.blocks if block.kind == BlockKind.paragraph)
-
-    assert "Section areas:" not in paragraph.text
-    assert "Section Section" not in paragraph.text
-    assert (
-        "Section Reasoning About Action And Planning" in paragraph.text
+    paragraph = next(
+        block
+        for block in package.blocks
+        if block.kind == BlockKind.paragraph
+        and "Answer set programming" in (block.text or "")
     )
-    assert "Section DLs Ontologies" in paragraph.text
-    assert "Section Argumentation" in paragraph.text
-    assert "Section ASP" in paragraph.text
-    assert [(span.kind, span.label) for span in paragraph.referenceSpans] == [
-        (ReferenceKind.reference, "Section: Reasoning About Action And Planning"),
-        (ReferenceKind.reference, "Section: DLs Ontologies"),
-        (ReferenceKind.reference, "Section: Argumentation"),
-        (ReferenceKind.reference, "Section: ASP"),
+
+    assert "Answer set programming (Section 2.2) is related." in paragraph.text
+    assert "Section ASP" not in paragraph.text
+    assert "Section areas.ASP" not in paragraph.text
+    assert paragraph.referenceSpans == []
+    assert [section.title for section in package.sections] == [
+        "Foundations",
+        "Non-monotonic reasoning",
+        "Default logic",
+        "Answer set programming",
     ]
 
 

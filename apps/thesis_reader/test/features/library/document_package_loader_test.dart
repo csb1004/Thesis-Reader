@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:document_contract/document_contract.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:thesis_reader/features/library/data/document_package_loader.dart';
@@ -181,7 +180,7 @@ void main() {
     );
   });
 
-  test('normalizes cached raw section labels into internal references', () async {
+  test('preserves cached raw section labels as ordinary text', () async {
     final temp = await Directory.systemTemp.createTemp('package_loader_test');
     final packageFile = File(
       p.join(temp.path, 'packages', 'doc-1', 'package.json'),
@@ -233,31 +232,13 @@ void main() {
 
     final paragraph = loaded!.package.blocks.first;
 
-    expect(paragraph.text, isNot(contains('Section areas:')));
-    expect(paragraph.text, isNot(contains('Section Section')));
     expect(
       paragraph.text,
-      contains('Section Reasoning About Action And Planning'),
+      contains('Section Section areas:ReasoningAboutActionAndPlanning'),
     );
-    expect(paragraph.text, contains('Section DLs Ontologies'));
-    expect(paragraph.text, contains('Section ASP'));
-    expect(
-      [(paragraph.referenceSpans[0].kind, paragraph.referenceSpans[0].label)],
-      [
-        (
-          ReferenceKind.reference,
-          'Section: Reasoning About Action And Planning',
-        ),
-      ],
-    );
-    expect(
-      [(paragraph.referenceSpans[1].kind, paragraph.referenceSpans[1].label)],
-      [(ReferenceKind.reference, 'Section: DLs Ontologies')],
-    );
-    expect(
-      [(paragraph.referenceSpans[2].kind, paragraph.referenceSpans[2].label)],
-      [(ReferenceKind.reference, 'Section: ASP')],
-    );
+    expect(paragraph.text, contains('Section Section areas:DLsOntologies'));
+    expect(paragraph.text, contains('Section areas.ASP'));
+    expect(paragraph.referenceSpans, isEmpty);
   });
 
   test(

@@ -25,6 +25,7 @@ import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
 
 const _readerTopChromeReserve = kToolbarHeight + 8;
 const _readerBottomInsetReserve = 28.0;
+final _numericCitationPattern = RegExp(r'\[\s*\d+(?:\s*,\s*\d+)*\s*\]');
 
 final class ReaderProgress {
   const ReaderProgress({
@@ -184,6 +185,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
                     onAskQuestion: _openQuestionAnswer,
                     onSummarize: _summarizeCurrentPage,
                     onVocabulary: _openVocabulary,
+                    onTableOfContents: _openTableOfContents,
                     onSettings: _showSettings,
                   ),
                 if (_isChromeVisible &&
@@ -395,6 +397,26 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     });
   }
 
+  void _applySettings(ReaderSettings settings) {
+    final anchorBlockId = settings.readingMode != _settings.readingMode
+        ? _currentAnchorBlockId()
+        : null;
+
+    setState(() => _settings = settings);
+    widget.onSettingsChanged?.call(settings);
+    _syncNativeVolumeKeyNavigation();
+
+    if (anchorBlockId == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _jumpToBlock(anchorBlockId);
+    });
+  }
+
   void _showSettings() {
     showModalBottomSheet<void>(
       context: context,
@@ -405,9 +427,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
             return ViewerSettingsSheet(
               settings: _settings,
               onChanged: (settings) {
-                setState(() => _settings = settings);
-                widget.onSettingsChanged?.call(settings);
-                _syncNativeVolumeKeyNavigation();
+                _applySettings(settings);
                 setSheetState(() {});
               },
             );
@@ -415,6 +435,171 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         );
       },
     );
+  }
+
+  void _openTableOfContents() {
+    final package = _currentPackage ?? widget.package;
+    if (package == null) {
+      return;
+    }
+    final items = _tableOfContentsItems(package);
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No table of contents available.')),
+      );
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _TableOfContentsSheet(
+        items: items,
+        onSelected: (item) {
+          Navigator.of(context).pop();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            _jumpToBlock(item.blockId);
+          });
+        },
+      ),
+    );
+  }
+
+  String? _currentAnchorBlockId() {
+    final package = _currentPackage ?? widget.package;
+    if (package == null || package.blocks.isEmpty) {
+      return null;
+    }
+
+    switch (_settings.readingMode) {
+      case ReadingMode.page:
+        final layout = _currentLayout;
+        if (layout == null || layout.pages.isEmpty) {
+          return package.blocks.first.id;
+        }
+        final pageIndex = _currentPageIndex.clamp(0, layout.pages.length - 1);
+        final page = layout.pages[pageIndex];
+        if (page.blockIds.isNotEmpty) {
+          return page.blockIds.first;
+        }
+        return package.blocks.first.id;
+      case ReadingMode.scroll:
+        if (!_scrollController.hasClients) {
+          return package.blocks.first.id;
+        }
+        final position = _scrollController.position;
+        final progress = position.maxScrollExtent <= 0
+            ? 0.0
+            : (position.pixels / position.maxScrollExtent).clamp(0.0, 1.0);
+        final index = (progress * (package.blocks.length - 1)).round();
+        final clampedIndex = index.clamp(0, package.blocks.length - 1).toInt();
+        return package.blocks[clampedIndex].id;
+    }
+  }
+
+  void _jumpToBlock(String blockId) {
+    switch (_settings.readingMode) {
+      case ReadingMode.page:
+        final layout = _currentLayout;
+        if (layout == null || layout.pages.isEmpty) {
+          return;
+        }
+        final pageIndex = _pageIndexForBlock(layout, blockId);
+        if (pageIndex == null) {
+          return;
+        }
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(pageIndex);
+        }
+        _handlePageChanged(pageIndex);
+        return;
+      case ReadingMode.scroll:
+        _jumpScrollToBlock(blockId);
+    }
+  }
+
+  int? _pageIndexForBlock(ReaderLayoutResult layout, String blockId) {
+    for (var index = 0; index < layout.pages.length; index++) {
+      if (layout.pages[index].blockIds.contains(blockId)) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  void _jumpScrollToBlock(String blockId) {
+    final package = _currentPackage ?? widget.package;
+    if (package == null ||
+        package.blocks.isEmpty ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final blockIndex = package.blocks.indexWhere(
+      (block) => block.id == blockId,
+    );
+    if (blockIndex < 0) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    final progress = package.blocks.length <= 1
+        ? 0.0
+        : blockIndex / (package.blocks.length - 1);
+    final offset = (position.maxScrollExtent * progress)
+        .clamp(0.0, position.maxScrollExtent)
+        .toDouble();
+    _scrollController.jumpTo(offset);
+    widget.onProgressChanged?.call(
+      ReaderProgress(
+        documentId: widget.documentId,
+        scrollOffset: offset,
+        scrollProgress: progress.clamp(0.0, 1.0).toDouble(),
+      ),
+    );
+  }
+
+  List<_TableOfContentsItem> _tableOfContentsItems(DocumentPackage package) {
+    final blockIds = {for (final block in package.blocks) block.id};
+    final items = <_TableOfContentsItem>[];
+    for (final section in package.sections) {
+      final title = section.title.trim();
+      if (title.isEmpty) {
+        continue;
+      }
+      String? blockId;
+      for (final candidate in section.blockIds) {
+        if (blockIds.contains(candidate)) {
+          blockId = candidate;
+          break;
+        }
+      }
+      if (blockId == null) {
+        continue;
+      }
+      items.add(_TableOfContentsItem(title: title, blockId: blockId));
+    }
+
+    if (items.length == 1 && items.single.title == 'Document') {
+      return _headingTableOfContentsItems(package);
+    }
+    if (items.isNotEmpty) {
+      return items;
+    }
+    return _headingTableOfContentsItems(package);
+  }
+
+  List<_TableOfContentsItem> _headingTableOfContentsItems(
+    DocumentPackage package,
+  ) {
+    return [
+      for (final block in package.blocks)
+        if (block.kind == BlockKind.heading &&
+            (block.text?.trim().isNotEmpty ?? false))
+          _TableOfContentsItem(title: block.text!.trim(), blockId: block.id),
+    ];
   }
 
   void _openAsset(DocumentAsset asset) {
@@ -998,7 +1183,7 @@ DocumentBlock _blockForPageItem(DocumentBlock block, ReaderPageItem item) {
     ],
     referenceSpans: [
       for (final span in block.referenceSpans)
-        if (span.end > startOffset && span.start < endOffset)
+        if (span.start >= startOffset && span.end <= endOffset)
           ReferenceSpan(
             start: math.max(span.start, startOffset) - startOffset,
             end: math.min(span.end, endOffset) - startOffset,
@@ -1070,6 +1255,7 @@ final class _ReaderTopChrome extends StatelessWidget {
     required this.onAskQuestion,
     required this.onSummarize,
     required this.onVocabulary,
+    required this.onTableOfContents,
     required this.onSettings,
   });
 
@@ -1077,6 +1263,7 @@ final class _ReaderTopChrome extends StatelessWidget {
   final VoidCallback onAskQuestion;
   final VoidCallback onSummarize;
   final VoidCallback onVocabulary;
+  final VoidCallback onTableOfContents;
   final VoidCallback onSettings;
 
   @override
@@ -1117,6 +1304,12 @@ final class _ReaderTopChrome extends StatelessWidget {
                     onPressed: onSummarize,
                   ),
                   IconButton(
+                    key: const Key('reader-toc-button'),
+                    tooltip: 'Contents',
+                    icon: const Icon(Icons.format_list_bulleted),
+                    onPressed: onTableOfContents,
+                  ),
+                  IconButton(
                     tooltip: '단어장',
                     icon: const Icon(Icons.menu_book_outlined),
                     onPressed: onVocabulary,
@@ -1131,6 +1324,45 @@ final class _ReaderTopChrome extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+final class _TableOfContentsItem {
+  const _TableOfContentsItem({required this.title, required this.blockId});
+
+  final String title;
+  final String blockId;
+}
+
+final class _TableOfContentsSheet extends StatelessWidget {
+  const _TableOfContentsSheet({required this.items, required this.onSelected});
+
+  final List<_TableOfContentsItem> items;
+  final ValueChanged<_TableOfContentsItem> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      key: const Key('reader-table-of-contents-sheet'),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        itemCount: items.length,
+        separatorBuilder: (context, index) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: Text(
+              item.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => onSelected(item),
+          );
+        },
       ),
     );
   }
@@ -1558,12 +1790,16 @@ final class _ReferenceSelectableTextState
 
     final renderableSpans = [
       for (final span in widget.referenceSpans)
-        if (span.kind == ReferenceKind.citation ||
-            span.kind == ReferenceKind.reference ||
-            widget.assetsById.containsKey(span.targetAssetId))
+        if (!_isSectionReferenceSpan(widget.text, span) &&
+            (span.kind == ReferenceKind.citation ||
+                span.kind == ReferenceKind.reference ||
+                widget.assetsById.containsKey(span.targetAssetId)))
           span,
     ];
-    final validSpans = _validReferenceSpans(widget.text, renderableSpans);
+    final validSpans = _validReferenceSpans(
+      widget.text,
+      _withAutoCitationSpans(widget.text, renderableSpans),
+    );
     final validStyleSpans = _validTextStyleSpans(widget.text, widget.textSpans);
 
     if (validSpans.isEmpty &&
@@ -1845,6 +2081,49 @@ final class _ReferenceSelectableTextState
     }
     _recognizers.clear();
   }
+}
+
+List<ReferenceSpan> _withAutoCitationSpans(
+  String text,
+  List<ReferenceSpan> referenceSpans,
+) {
+  final spans = [...referenceSpans];
+  for (final match in _numericCitationPattern.allMatches(text)) {
+    final overlapsExistingSpan = spans.any(
+      (span) => span.start < match.end && match.start < span.end,
+    );
+    if (overlapsExistingSpan) {
+      continue;
+    }
+    spans.add(
+      ReferenceSpan(
+        start: match.start,
+        end: match.end,
+        targetAssetId: '',
+        kind: ReferenceKind.citation,
+        label: match.group(0),
+      ),
+    );
+  }
+  return spans;
+}
+
+bool _isSectionReferenceSpan(String text, ReferenceSpan span) {
+  if (span.kind != ReferenceKind.reference) {
+    return false;
+  }
+  final label = span.label?.trim().toLowerCase();
+  if (label != null && label.startsWith('section:')) {
+    return true;
+  }
+  if (span.start < 0 || span.end > text.length || span.end <= span.start) {
+    return false;
+  }
+  return text
+      .substring(span.start, span.end)
+      .trim()
+      .toLowerCase()
+      .startsWith('section ');
 }
 
 List<ReferenceSpan> _validReferenceSpans(

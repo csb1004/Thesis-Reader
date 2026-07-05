@@ -393,6 +393,40 @@ void main() {
     ]);
   });
 
+  testWidgets('switching from scroll to page keeps the current anchor', (
+    tester,
+  ) async {
+    final progressChanges = <ReaderProgress>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(
+            List.generate(
+              18,
+              (index) => 'Paragraph $index ${'fills the reader page. ' * 120}',
+            ),
+          ),
+          initialSettings: const ReaderSettings(
+            readingMode: ReadingMode.scroll,
+          ),
+          initialScrollProgress: 0.75,
+          onProgressChanged: progressChanges.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.view_carousel));
+    await tester.pumpAndSettle();
+
+    expect(progressChanges.last.pageIndex, greaterThan(0));
+  });
+
   testWidgets('renders valid asset references as clickable styled spans', (
     tester,
   ) async {
@@ -450,36 +484,30 @@ void main() {
     );
   });
 
-  testWidgets('opens internal section references as bottom sheets', (
+  testWidgets('auto-detects numeric citations without package spans', (
     tester,
   ) async {
-    const sectionReferenceText =
-        'See Section Reasoning About Action And Planning for details.';
+    const citationText =
+        'Default extensions [32, 232, 33] support this interpretation.';
     final package = _packageWithCustomBlocks(const [
-      DocumentBlock.paragraph(
-        id: 'b1',
+      DocumentBlock.paragraph(id: 'b1', sectionId: 's1', text: citationText),
+      DocumentBlock(
+        id: 'ref-32',
         sectionId: 's1',
-        text: sectionReferenceText,
-        referenceSpans: [
-          ReferenceSpan(
-            start: 12,
-            end: 47,
-            targetAssetId: '',
-            kind: ReferenceKind.reference,
-            label: 'Section: Reasoning About Action And Planning',
-          ),
-        ],
+        kind: BlockKind.reference,
+        text: '[32] Default logic paper.',
       ),
       DocumentBlock(
-        id: 'heading-1',
+        id: 'ref-232',
         sectionId: 's1',
-        kind: BlockKind.heading,
-        text: 'Reasoning About Action And Planning',
+        kind: BlockKind.reference,
+        text: '[232] Extension semantics paper.',
       ),
-      DocumentBlock.paragraph(
-        id: 'b2',
+      DocumentBlock(
+        id: 'ref-33',
         sectionId: 's1',
-        text: 'This section explains action and planning.',
+        kind: BlockKind.reference,
+        text: '[33] Answer set programming paper.',
       ),
     ]);
 
@@ -489,33 +517,116 @@ void main() {
       ),
     );
 
-    final referenceSpan = _textSpanWithText(
-      tester,
-      'Reasoning About Action And Planning',
+    final citationSpan = _textSpanWithText(tester, '[32, 232, 33]');
+
+    expect(citationSpan.recognizer, isNotNull);
+
+    (citationSpan.recognizer! as TapGestureRecognizer).onTap!();
+    await tester.pumpAndSettle();
+
+    final sheet = find.byKey(const Key('reader-reference-bottom-sheet'));
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.textContaining('[32]')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.textContaining('[232]')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.textContaining('[33]')),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('table of contents jumps to selected section pages', (
+    tester,
+  ) async {
+    final progressChanges = <ReaderProgress>[];
+    final package = _packageWithSections(
+      sections: const [
+        DocumentSection(id: 'abstract', title: 'Abstract', blockIds: ['b1']),
+        DocumentSection(
+          id: 'summary',
+          title: 'Executive Summary',
+          blockIds: ['b2'],
+        ),
+      ],
+      blocks: [
+        DocumentBlock.paragraph(
+          id: 'b1',
+          sectionId: 'abstract',
+          text: 'Abstract ${'fills the reader page. ' * 500}',
+        ),
+        DocumentBlock.paragraph(
+          id: 'b2',
+          sectionId: 'summary',
+          text: 'Executive summary target ${'fills the reader page. ' * 80}',
+        ),
+      ],
     );
 
-    expect(referenceSpan.recognizer, isNotNull);
-    expect(referenceSpan.style?.decoration, TextDecoration.underline);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: package,
+          onProgressChanged: progressChanges.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-    (referenceSpan.recognizer! as TapGestureRecognizer).onTap!();
+    await tester.tap(find.byKey(const Key('reader-menu-toggle-zone')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reader-toc-button')));
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('reader-inline-reference-bottom-sheet')),
+      find.byKey(const Key('reader-table-of-contents-sheet')),
       findsOneWidget,
     );
-    final sheet = find.byKey(const Key('reader-inline-reference-bottom-sheet'));
-    expect(
-      find.text('Section: Reasoning About Action And Planning'),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: sheet,
-        matching: find.text('This section explains action and planning.'),
+    expect(find.text('Abstract'), findsWidgets);
+    expect(find.text('Executive Summary'), findsOneWidget);
+
+    await tester.tap(find.text('Executive Summary'));
+    await tester.pumpAndSettle();
+
+    expect(progressChanges.last.pageIndex, greaterThan(0));
+  });
+
+  testWidgets('renders section reference spans as plain text', (tester) async {
+    const sectionReferenceText = 'See Section 2.2 for details.';
+    final package = _packageWithCustomBlocks(const [
+      DocumentBlock.paragraph(
+        id: 'b1',
+        sectionId: 's1',
+        text: sectionReferenceText,
+        referenceSpans: [
+          ReferenceSpan(
+            start: 4,
+            end: 15,
+            targetAssetId: '',
+            kind: ReferenceKind.reference,
+            label: 'Section: 2.2',
+          ),
+        ],
       ),
-      findsOneWidget,
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
     );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+
+    expect(selectable.data, sectionReferenceText);
+    expect(selectable.textSpan, isNull);
   });
 
   testWidgets('reader selection uses thesis actions instead of platform menu', (
@@ -1059,6 +1170,24 @@ DocumentPackage _packageWithCustomBlocks(List<DocumentBlock> blocks) {
         blockIds: blocks.map((block) => block.id).toList(),
       ),
     ],
+    blocks: blocks,
+    assets: const [],
+  );
+}
+
+DocumentPackage _packageWithSections({
+  required List<DocumentSection> sections,
+  required List<DocumentBlock> blocks,
+}) {
+  return DocumentPackage(
+    packageVersion: 1,
+    documentId: 'doc-1',
+    metadata: const DocumentMetadata(
+      title: 'Reader Test',
+      sourceFilename: 'reader.pdf',
+      originalPdfSha256: 'abc123',
+    ),
+    sections: sections,
     blocks: blocks,
     assets: const [],
   );

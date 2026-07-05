@@ -94,29 +94,25 @@ abstract final class DocumentPackageLoader {
   }
 
   static DocumentBlock _normalizeBlockText(DocumentBlock block) {
-    final normalized = block.text == null
+    final normalizedText = block.text == null
         ? null
         : _normalizeExtractedBlockText(block.text!);
     return DocumentBlock(
       id: block.id,
       sectionId: block.sectionId,
       kind: block.kind,
-      text: normalized?.text,
+      text: normalizedText,
       assetId: block.assetId,
       latex: block.latex,
       source: block.source,
       textSpans: block.textSpans,
-      referenceSpans: normalized != null && normalized.referenceSpans.isNotEmpty
-          ? normalized.referenceSpans
-          : block.referenceSpans,
+      referenceSpans: block.referenceSpans,
       anchor: block.anchor,
     );
   }
 
-  static _NormalizedExtractedText _normalizeExtractedBlockText(String text) {
-    final normalizedText = _normalizeExtractedText(text);
-    return _normalizeLegacySectionReferences(normalizedText);
-  }
+  static String _normalizeExtractedBlockText(String text) =>
+      _normalizeExtractedText(text);
 
   static String _normalizeExtractedText(String text) {
     final joinedWords = text
@@ -128,86 +124,6 @@ abstract final class DocumentPackageLoader {
     final collapsed = joinedWords.replaceAll(RegExp(r'\s+'), ' ').trim();
     return _normalizeMathText(_normalizePunctuationSpacing(collapsed));
   }
-
-  static _NormalizedExtractedText _normalizeLegacySectionReferences(
-    String text,
-  ) {
-    final pattern = RegExp(r'(?:Section\s+)?Section areas[.:]([A-Za-z0-9_]+)');
-    final spans = <ReferenceSpan>[];
-    final buffer = StringBuffer();
-    var cursor = 0;
-
-    for (final match in pattern.allMatches(text)) {
-      buffer.write(text.substring(cursor, match.start));
-      final label = _humanizeReferenceLabel(match.group(1)!);
-      final replacement = 'Section $label';
-      final start = buffer.length;
-      buffer.write(replacement);
-      spans.add(
-        ReferenceSpan(
-          start: start,
-          end: start + replacement.length,
-          targetAssetId: '',
-          kind: ReferenceKind.reference,
-          label: 'Section: $label',
-        ),
-      );
-      cursor = match.end;
-    }
-
-    if (spans.isEmpty) {
-      return _NormalizedExtractedText(text: text);
-    }
-
-    buffer.write(text.substring(cursor));
-    return _NormalizedExtractedText(
-      text: buffer.toString(),
-      referenceSpans: spans,
-    );
-  }
-
-  static String _humanizeReferenceLabel(String value) {
-    final normalized = value.replaceAll(RegExp(r'[_-]+'), ' ').trim();
-    final buffer = StringBuffer();
-
-    for (var index = 0; index < normalized.length; index++) {
-      final codeUnit = normalized.codeUnitAt(index);
-      if (_shouldInsertReferenceLabelSpace(normalized, index)) {
-        buffer.write(' ');
-      }
-      buffer.writeCharCode(codeUnit);
-    }
-
-    return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
-
-  static bool _shouldInsertReferenceLabelSpace(String value, int index) {
-    if (index == 0 || value.codeUnitAt(index) == 0x20) {
-      return false;
-    }
-    final current = value.codeUnitAt(index);
-    if (!_isAsciiUpper(current)) {
-      return false;
-    }
-    final previous = value.codeUnitAt(index - 1);
-    if (_isAsciiLower(previous) || _isAsciiDigit(previous)) {
-      return true;
-    }
-    if (!_isAsciiUpper(previous) || index + 2 >= value.length) {
-      return false;
-    }
-    return _isAsciiLower(value.codeUnitAt(index + 1)) &&
-        _isAsciiLower(value.codeUnitAt(index + 2));
-  }
-
-  static bool _isAsciiUpper(int codeUnit) =>
-      codeUnit >= 0x41 && codeUnit <= 0x5A;
-
-  static bool _isAsciiLower(int codeUnit) =>
-      codeUnit >= 0x61 && codeUnit <= 0x7A;
-
-  static bool _isAsciiDigit(int codeUnit) =>
-      codeUnit >= 0x30 && codeUnit <= 0x39;
 
   static String _normalizeMathText(String text) {
     return text.replaceAllMapped(
@@ -232,14 +148,4 @@ abstract final class DocumentPackageLoader {
     );
     return normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
-}
-
-final class _NormalizedExtractedText {
-  const _NormalizedExtractedText({
-    required this.text,
-    this.referenceSpans = const [],
-  });
-
-  final String text;
-  final List<ReferenceSpan> referenceSpans;
 }

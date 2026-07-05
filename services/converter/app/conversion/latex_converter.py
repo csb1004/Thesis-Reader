@@ -47,21 +47,13 @@ def convert_latex_source_to_package(
     expanded = _expand_simple_includes(raw, main_tex.parent)
     body = _document_body(expanded)
     title = _clean_text(_first_match(raw, r"\\title\{(?P<value>.*?)\}") or main_tex.stem)
-    blocks = _extract_blocks(body)
+    section_reference_numbers = _section_reference_numbers(body)
+    blocks = _extract_blocks(body, section_reference_numbers)
     if not blocks:
         raise ValueError("LaTeX source produced no reader blocks")
     blocks, assets = _attach_equation_assets(blocks, output_dir)
 
-    section_id = "sec-1"
-    anchored = [
-        block.model_copy(
-            update={
-                "sectionId": section_id,
-                "anchor": ReadingAnchor(blockId=block.id, textOffset=0),
-            },
-        )
-        for block in blocks
-    ]
+    anchored, sections = _assign_blocks_to_sections(blocks)
     package = DocumentPackage(
         packageVersion=1,
         documentId=document_id,
@@ -75,13 +67,7 @@ def convert_latex_source_to_package(
         conversionMode="latex-source",
         fallbackReason=None,
         sourceInfo=source_info,
-        sections=[
-            DocumentSection(
-                id=section_id,
-                title="Document",
-                blockIds=[block.id for block in anchored],
-            )
-        ],
+        sections=sections,
         blocks=anchored,
         assets=assets,
         anchors=[block.anchor for block in anchored if block.anchor is not None],
@@ -128,8 +114,104 @@ def _attach_equation_assets(
     return updated_blocks, assets
 
 
-def _extract_blocks(body: str) -> list[DocumentBlock]:
-    tokens = _tokenize_body(body)
+def _assign_blocks_to_sections(
+    blocks: list[DocumentBlock],
+) -> tuple[list[DocumentBlock], list[DocumentSection]]:
+    sections: list[DocumentSection] = []
+    anchored: list[DocumentBlock] = []
+    current_id: str | None = None
+    current_title = "Document"
+    current_block_ids: list[str] = []
+
+    def finish_section() -> None:
+        if current_id is None:
+            return
+        sections.append(
+            DocumentSection(
+                id=current_id,
+                title=current_title,
+                blockIds=list(current_block_ids),
+            )
+        )
+
+    def start_section(title: str) -> str:
+        nonlocal current_id, current_title, current_block_ids
+        finish_section()
+        current_id = f"sec-{len(sections) + 1}"
+        current_title = title.strip() or "Document"
+        current_block_ids = []
+        return current_id
+
+    for block in blocks:
+        if block.kind == BlockKind.heading and block.text:
+            section_id = start_section(block.text)
+        elif current_id is None:
+            section_id = start_section("Document")
+        else:
+            section_id = current_id
+
+        current_block_ids.append(block.id)
+        anchored.append(
+            block.model_copy(
+                update={
+                    "sectionId": section_id,
+                    "anchor": ReadingAnchor(blockId=block.id, textOffset=0),
+                },
+            )
+        )
+
+    finish_section()
+    return anchored, sections
+
+
+def _section_reference_numbers(body: str) -> dict[str, str]:
+    pattern = re.compile(
+        r"\\(?P<command>subsubsection|subsection|section)(?P<star>\*)?"
+        r"\{(?P<title>.*?)\}"
+        r"(?P<label_tail>\s*\\label\{(?P<label>[^}]+)\})?",
+        flags=re.DOTALL,
+    )
+    section = 0
+    subsection = 0
+    subsubsection = 0
+    numbers: dict[str, str] = {}
+
+    for match in pattern.finditer(body):
+        command = match.group("command")
+        if match.group("star"):
+            continue
+
+        if command == "section":
+            section += 1
+            subsection = 0
+            subsubsection = 0
+            number = str(section)
+        elif command == "subsection":
+            if section == 0:
+                section = 1
+            subsection += 1
+            subsubsection = 0
+            number = f"{section}.{subsection}"
+        else:
+            if section == 0:
+                section = 1
+            if subsection == 0:
+                subsection = 1
+            subsubsection += 1
+            number = f"{section}.{subsection}.{subsubsection}"
+
+        label = match.group("label")
+        if label:
+            numbers[label.strip()] = number
+
+    return numbers
+
+
+def _extract_blocks(
+    body: str,
+    section_reference_numbers: dict[str, str],
+) -> list[DocumentBlock]:
+    tokens = _tokenize_body(body, section_reference_numbers)
     blocks: list[DocumentBlock] = []
     for token in tokens:
         block_id = f"block-{len(blocks) + 1}"
@@ -246,7 +328,10 @@ def _expand_simple_includes(text: str, root: Path) -> str:
     return pattern.sub(replace, text)
 
 
-def _tokenize_body(body: str) -> list[dict[str, str]]:
+def _tokenize_body(
+    body: str,
+    section_reference_numbers: dict[str, str],
+) -> list[dict[str, str]]:
     body = _strip_comments(body)
     protected: list[dict[str, str]] = []
 
@@ -310,6 +395,16 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
         )
 
     body = re.sub(
+        r"\\begin\{abstract\}(?P<value>.*?)\\end\{abstract\}",
+        lambda match: (
+            f"{protect('heading', '', text='Abstract')}\n\n"
+            f"{match.group('value').strip()}"
+        ),
+        body,
+        flags=re.DOTALL,
+    )
+
+    body = re.sub(
         r"\\\[(?P<value>.*?)\\\]",
         lambda match: protect("equation", match.group("value").strip(), "displaymath"),
         body,
@@ -322,13 +417,7 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
         flags=re.DOTALL,
     )
     body = re.sub(
-        r"\\section\*?\{(?P<value>.*?)\}",
-        lambda match: protect("heading", "", text=_clean_text(match.group("value"))),
-        body,
-        flags=re.DOTALL,
-    )
-    body = re.sub(
-        r"\\subsection\*?\{(?P<value>.*?)\}",
+        r"\\(?:subsubsection|subsection|section)\*?\{(?P<value>.*?)\}",
         lambda match: protect("heading", "", text=_clean_text(match.group("value"))),
         body,
         flags=re.DOTALL,
@@ -394,6 +483,7 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
         cleaned, text_spans, reference_spans = _clean_text_metadata(
             chunk,
             citation_numbers,
+            section_reference_numbers,
         )
         if cleaned:
             token: dict[str, str | bool | list[TextStyleSpan] | list[ReferenceSpan] | dict[str, bool | str]] = {
@@ -412,7 +502,11 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
             tokens.append(token)
 
     for index, reference in enumerate(references, start=1):
-        cleaned = _clean_text(reference["value"], citation_numbers)
+        cleaned = _clean_text(
+            reference["value"],
+            citation_numbers,
+            section_reference_numbers,
+        )
         if cleaned:
             tokens.append({"kind": "reference", "text": f"[{index}] {cleaned}"})
 
@@ -448,14 +542,20 @@ def _extract_bibitems(text: str) -> list[dict[str, str]]:
 def _clean_text(
     text: str,
     citation_numbers: dict[str, str] | None = None,
+    section_reference_numbers: dict[str, str] | None = None,
 ) -> str:
-    cleaned, _, _ = _clean_text_metadata(text, citation_numbers)
+    cleaned, _, _ = _clean_text_metadata(
+        text,
+        citation_numbers,
+        section_reference_numbers,
+    )
     return cleaned
 
 
 def _clean_text_metadata(
     text: str,
     citation_numbers: dict[str, str] | None = None,
+    section_reference_numbers: dict[str, str] | None = None,
 ) -> tuple[str, list[TextStyleSpan], list[ReferenceSpan]]:
     style_markers: list[dict[str, bool]] = []
     citation_markers: list[str] = []
@@ -464,7 +564,11 @@ def _clean_text_metadata(
     cleaned = re.sub(r"\\(?:maketitle|begin\{abstract\}|end\{abstract\})", " ", cleaned)
     cleaned = _mark_text_style_commands(cleaned, style_markers)
     cleaned = _replace_citations(cleaned, citation_numbers or {}, citation_markers)
-    cleaned = _replace_references(cleaned, reference_markers)
+    cleaned = _replace_references(
+        cleaned,
+        reference_markers,
+        section_reference_numbers or {},
+    )
     cleaned = _replace_inline_math(cleaned)
     cleaned = re.sub(r"\\\\(?:\[[^\]]+\])?", f" {LINE_BREAK_MARKER} ", cleaned)
     cleaned = re.sub(
@@ -650,7 +754,11 @@ def _extract_marked_text_spans(
     return output_text, text_spans, reference_spans
 
 
-def _replace_references(text: str, markers: list[str]) -> str:
+def _replace_references(
+    text: str,
+    markers: list[str],
+    section_reference_numbers: dict[str, str],
+) -> str:
     pattern = re.compile(
         r"\\(?P<command>eqref|labelcref|cref|Cref|autoref|Autoref|ref|Ref|vref|Vref|pageref|nameref)\*?(?:\[[^\]]*\])?\{(?P<labels>[^}]+)\}"
     )
@@ -667,7 +775,11 @@ def _replace_references(text: str, markers: list[str]) -> str:
                 command,
                 label,
                 preceding_text,
+                section_reference_numbers,
             )
+            if marker_label is None:
+                labels.append(display)
+                continue
             marker_id = len(markers)
             markers.append(marker_label)
             labels.append(f"@@REF_{marker_id}_START@@{display}@@REF_{marker_id}_END@@")
@@ -680,8 +792,18 @@ def _human_readable_reference_label(
     command: str,
     label: str,
     preceding_text: str,
-) -> tuple[str, str]:
+    section_reference_numbers: dict[str, str],
+) -> tuple[str, str | None]:
     prefix_name, cleaned_body = _reference_type_and_body(command, label)
+    if prefix_name == "Section":
+        cleaned_body = section_reference_numbers.get(label, cleaned_body)
+        include_prefix = not _preceded_by_reference_word(
+            preceding_text,
+            prefix_name,
+        )
+        display = f"{prefix_name} {cleaned_body}" if include_prefix else cleaned_body
+        return display, None
+
     include_prefix = prefix_name is not None and not _preceded_by_reference_word(
         preceding_text,
         prefix_name,
