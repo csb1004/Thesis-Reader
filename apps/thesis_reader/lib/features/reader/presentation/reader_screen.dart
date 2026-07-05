@@ -1790,10 +1790,7 @@ final class _ReferenceSelectableTextState
 
     final renderableSpans = [
       for (final span in widget.referenceSpans)
-        if (!_isSectionReferenceSpan(widget.text, span) &&
-            (span.kind == ReferenceKind.citation ||
-                span.kind == ReferenceKind.reference ||
-                widget.assetsById.containsKey(span.targetAssetId)))
+        if (_isRenderableReferenceSpan(widget.text, span, widget.assetsById))
           span,
     ];
     final validSpans = _validReferenceSpans(
@@ -2124,6 +2121,36 @@ bool _isSectionReferenceSpan(String text, ReferenceSpan span) {
       .trim()
       .toLowerCase()
       .startsWith('section ');
+}
+
+bool _isRenderableReferenceSpan(
+  String text,
+  ReferenceSpan span,
+  Map<String, DocumentAsset> assetsById,
+) {
+  if (_isSectionReferenceSpan(text, span)) {
+    return false;
+  }
+  if (span.kind == ReferenceKind.citation) {
+    return _isExactCitationSpan(text, span);
+  }
+  if (span.kind == ReferenceKind.reference) {
+    return true;
+  }
+  return assetsById.containsKey(span.targetAssetId);
+}
+
+bool _isExactCitationSpan(String text, ReferenceSpan span) {
+  if (span.start < 0 || span.end > text.length || span.end <= span.start) {
+    return false;
+  }
+  final citationText = text.substring(span.start, span.end).trim();
+  final label = span.label?.trim();
+  if (label != null && label.isNotEmpty) {
+    return citationText == label;
+  }
+  final match = _numericCitationPattern.firstMatch(citationText);
+  return match != null && match.start == 0 && match.end == citationText.length;
 }
 
 List<ReferenceSpan> _validReferenceSpans(

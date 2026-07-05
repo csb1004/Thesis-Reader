@@ -540,6 +540,51 @@ void main() {
     );
   });
 
+  testWidgets('ignores stale citation spans that include following words', (
+    tester,
+  ) async {
+    const citationText =
+        'Circumscription [238], another major attempt at formalising reasoning.';
+    final citationStart = citationText.indexOf('[238]');
+    final staleCitationEnd = citationText.indexOf(' major');
+    final package = _packageWithCustomBlocks([
+      DocumentBlock.paragraph(
+        id: 'b1',
+        sectionId: 's1',
+        text: citationText,
+        referenceSpans: [
+          ReferenceSpan(
+            start: citationStart,
+            end: staleCitationEnd,
+            targetAssetId: '',
+            kind: ReferenceKind.citation,
+            label: '[238]',
+          ),
+        ],
+      ),
+      const DocumentBlock(
+        id: 'ref-238',
+        sectionId: 's1',
+        kind: BlockKind.reference,
+        text: '[238] Circumscription reference.',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    final citationSpan = _textSpanWithText(tester, '[238]');
+    expect(citationSpan.recognizer, isNotNull);
+
+    for (final span in _textSpansContaining(tester, 'another')) {
+      expect(span.recognizer, isNull);
+      expect(span.style?.fontStyle, isNot(FontStyle.italic));
+    }
+  });
+
   testWidgets('table of contents jumps to selected section pages', (
     tester,
   ) async {
@@ -1352,6 +1397,24 @@ TextSpan _textSpanWithText(WidgetTester tester, String text) {
     }
   }
   throw StateError('No TextSpan found for $text');
+}
+
+List<TextSpan> _textSpansContaining(WidgetTester tester, String text) {
+  final spans = <TextSpan>[];
+  for (final selectable in tester.widgetList<SelectableText>(
+    find.byType(SelectableText),
+  )) {
+    final span = selectable.textSpan;
+    if (span == null) {
+      continue;
+    }
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      if (child is TextSpan && (child.text?.contains(text) ?? false)) {
+        spans.add(child);
+      }
+    }
+  }
+  return spans;
 }
 
 AdaptiveTextSelectionToolbar _selectionToolbarForEditableText(
