@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:document_contract/document_contract.dart';
@@ -641,6 +642,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     return showModalBottomSheet<void>(
       context: context,
+      barrierColor: Colors.transparent,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
@@ -1542,6 +1544,7 @@ final class _ReferenceSelectableTextState
         widget.text,
         style: widget.style,
         textScaler: TextScaler.noScaling,
+        selectionWidthStyle: ui.BoxWidthStyle.tight,
         contextMenuBuilder: _buildContextMenu,
       );
     }
@@ -1639,6 +1642,7 @@ final class _ReferenceSelectableTextState
     return SelectableText.rich(
       TextSpan(style: widget.style, children: children),
       textScaler: TextScaler.noScaling,
+      selectionWidthStyle: ui.BoxWidthStyle.tight,
       contextMenuBuilder: _buildContextMenu,
     );
   }

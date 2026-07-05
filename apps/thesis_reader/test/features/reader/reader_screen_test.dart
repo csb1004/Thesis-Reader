@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/gestures.dart';
@@ -515,6 +516,31 @@ void main() {
     expect(selectable.contextMenuBuilder, isNotNull);
   });
 
+  testWidgets('reader selection boxes stay tight to selected glyphs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['Right edge word']),
+        ),
+      ),
+    );
+
+    var selectable = tester.widget<SelectableText>(find.byType(SelectableText));
+    expect(selectable.selectionWidthStyle, ui.BoxWidthStyle.tight);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: _package()),
+      ),
+    );
+
+    selectable = tester.widget<SelectableText>(find.byType(SelectableText));
+    expect(selectable.selectionWidthStyle, ui.BoxWidthStyle.tight);
+  });
+
   testWidgets('selection action clears handles before running translation', (
     tester,
   ) async {
@@ -601,6 +627,51 @@ void main() {
       findsNothing,
     );
     expect(find.text('translated result'), findsOneWidget);
+  });
+
+  testWidgets('single-word translation result does not dim reader surface', (
+    tester,
+  ) async {
+    final client = SimpleTranslationClient(
+      httpClient: MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode('{"responseData":{"translatedText":"translated word"}}'),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['salient context sentence']),
+          simpleTranslationClient: client,
+        ),
+      ),
+    );
+
+    final editableState = tester.state<EditableTextState>(
+      find.byType(EditableText).first,
+    );
+    editableState.userUpdateTextEditingValue(
+      editableState.textEditingValue.copyWith(
+        selection: const TextSelection(baseOffset: 0, extentOffset: 7),
+      ),
+      SelectionChangedCause.longPress,
+    );
+
+    final menu = _selectionToolbarForEditableText(tester, editableState);
+    menu.buttonItems!.first.onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('reader-translation-result-sheet')),
+      findsOneWidget,
+    );
+    expect(find.text('translated word'), findsOneWidget);
+    expect(_hasColoredModalBarrier(tester), isFalse);
   });
 
   testWidgets('opens referenced asset in a bottom sheet', (tester) async {
@@ -1162,6 +1233,24 @@ String _flattenSelectableText(SelectableText selectable) {
 
   visit(selectable.textSpan!);
   return buffer.toString();
+}
+
+bool _hasColoredModalBarrier(WidgetTester tester) {
+  for (final barrier in tester.widgetList(find.byType(ModalBarrier))) {
+    if (barrier is ModalBarrier &&
+        barrier.color != null &&
+        barrier.color!.a != 0) {
+      return true;
+    }
+  }
+  for (final barrier in tester.widgetList(find.byType(AnimatedModalBarrier))) {
+    if (barrier is AnimatedModalBarrier &&
+        barrier.color.value != null &&
+        barrier.color.value!.a != 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 DocumentPackage _package({List<ReferenceSpan>? referenceSpans}) {
