@@ -94,6 +94,8 @@ final class _ReaderScreenState extends State<ReaderScreen> {
   var _currentPageIndex = 0;
   var _isChromeVisible = false;
   Offset? _chromePointerStart;
+  Timer? _chromePointerLongPressTimer;
+  var _didChromePointerBecomeLongPress = false;
   ReaderLayoutResult? _currentLayout;
   DocumentPackage? _currentPackage;
   var _didRestoreScroll = false;
@@ -129,6 +131,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     _volumeKeySubscription?.cancel();
     _scrollController.dispose();
     _pageController.dispose();
+    _chromePointerLongPressTimer?.cancel();
     super.dispose();
   }
 
@@ -172,6 +175,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
                   key: const Key('reader-menu-toggle-zone'),
                   onPointerDown: _handleChromePointerDown,
                   onPointerUp: _handleChromePointerUp,
+                  onPointerCancel: _handleChromePointerCancel,
                   child: _buildReader(package),
                 ),
                 if (_isChromeVisible)
@@ -259,15 +263,34 @@ final class _ReaderScreenState extends State<ReaderScreen> {
 
   void _handleChromePointerDown(PointerDownEvent event) {
     _chromePointerStart = event.position;
+    _didChromePointerBecomeLongPress = false;
+    _chromePointerLongPressTimer?.cancel();
+    _chromePointerLongPressTimer = Timer(kLongPressTimeout, () {
+      _didChromePointerBecomeLongPress = true;
+    });
   }
 
   void _handleChromePointerUp(PointerUpEvent event) {
     final start = _chromePointerStart;
+    final wasLongPress = _didChromePointerBecomeLongPress;
     _chromePointerStart = null;
+    _didChromePointerBecomeLongPress = false;
+    _chromePointerLongPressTimer?.cancel();
+    _chromePointerLongPressTimer = null;
     if (start == null || (event.position - start).distance > 12) {
       return;
     }
+    if (wasLongPress) {
+      return;
+    }
     setState(() => _isChromeVisible = !_isChromeVisible);
+  }
+
+  void _handleChromePointerCancel(PointerCancelEvent event) {
+    _chromePointerStart = null;
+    _didChromePointerBecomeLongPress = false;
+    _chromePointerLongPressTimer?.cancel();
+    _chromePointerLongPressTimer = null;
   }
 
   void _handlePageChanged(int pageIndex) {

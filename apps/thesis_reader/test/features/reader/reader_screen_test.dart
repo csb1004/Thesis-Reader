@@ -110,6 +110,27 @@ void main() {
     expect(find.byKey(const Key('reader-page-slider')), findsNothing);
   });
 
+  testWidgets('long pressing reader text does not reveal reader chrome', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          displayTitle: 'Current and Future Research',
+          package: _packageWithBlocks(['Answer set programming']),
+        ),
+      ),
+    );
+
+    await tester.longPress(find.text('Answer set programming'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Current and Future Research'), findsNothing);
+    expect(find.byKey(const Key('reader-page-slider')), findsNothing);
+    expect(_hasColoredModalBarrier(tester), isFalse);
+  });
+
   testWidgets('showing reader chrome does not shift the reading surface', (
     tester,
   ) async {
