@@ -732,6 +732,64 @@ void main() {
     expect(heading.style?.fontSize, greaterThan((body.style?.fontSize)!));
     expect(heading.style?.fontWeight, FontWeight.w700);
   });
+
+  testWidgets('renders structured TeX line breaks and inline style spans', (
+    tester,
+  ) async {
+    final package = _packageWithCustomBlocks([
+      const DocumentBlock.paragraph(
+        id: 'b1',
+        sectionId: 's1',
+        text: 'First line\nSecond line with bold and marked.',
+        textSpans: [
+          TextStyleSpan(start: 28, end: 32, bold: true),
+          TextStyleSpan(start: 37, end: 43, highlight: true),
+        ],
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+    expect(selectable.textSpan, isNotNull);
+
+    final boldSpan = _textSpanWithText(tester, 'bold');
+    final highlightedSpan = _textSpanWithText(tester, 'marked');
+
+    expect(boldSpan.style?.fontWeight, FontWeight.w700);
+    expect(highlightedSpan.style?.backgroundColor, isNotNull);
+    expect(_flattenSelectableText(selectable), contains('\n'));
+  });
+
+  testWidgets('renders TeX horizontal rules as reader dividers', (
+    tester,
+  ) async {
+    final package = _packageWithCustomBlocks([
+      const DocumentBlock(
+        id: 'hr-1',
+        sectionId: 's1',
+        kind: BlockKind.paragraph,
+        source: {'role': 'horizontalRule'},
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('reader-horizontal-rule-hr-1')),
+      findsOneWidget,
+    );
+  });
 }
 
 DocumentPackage _packageWithCustomBlocks(List<DocumentBlock> blocks) {
@@ -914,6 +972,25 @@ TextSpan _textSpanWithText(WidgetTester tester, String text) {
     }
   }
   throw StateError('No TextSpan found for $text');
+}
+
+String _flattenSelectableText(SelectableText selectable) {
+  final data = selectable.data;
+  if (data != null) {
+    return data;
+  }
+  final buffer = StringBuffer();
+  void visit(InlineSpan span) {
+    if (span is TextSpan) {
+      buffer.write(span.text ?? '');
+      for (final child in span.children ?? const <InlineSpan>[]) {
+        visit(child);
+      }
+    }
+  }
+
+  visit(selectable.textSpan!);
+  return buffer.toString();
 }
 
 DocumentPackage _package({List<ReferenceSpan>? referenceSpans}) {

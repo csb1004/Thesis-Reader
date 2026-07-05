@@ -10,9 +10,11 @@ import 'package:pdfx/pdfx.dart';
 import 'package:thesis_reader/features/ai/data/openai_client.dart';
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
 import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
+import 'package:thesis_reader/features/ai/domain/question_answer_service.dart';
 import 'package:thesis_reader/features/ai/domain/summary_service.dart';
 import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/reader/domain/readable_math_text.dart';
+import 'package:thesis_reader/features/reader/domain/reader_action_text.dart';
 import 'package:thesis_reader/features/reader/domain/reader_layout_engine.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/viewer_settings_sheet.dart';
@@ -50,6 +52,7 @@ final class ReaderScreen extends StatefulWidget {
     this.simpleTranslationClient,
     this.translationService,
     this.summaryService,
+    this.questionAnswerService,
     this.vocabularyRepository,
     this.initialPageIndex,
     this.initialScrollProgress,
@@ -67,6 +70,7 @@ final class ReaderScreen extends StatefulWidget {
   final SimpleTranslationClient? simpleTranslationClient;
   final TranslationService? translationService;
   final SummaryService? summaryService;
+  final QuestionAnswerService? questionAnswerService;
   final VocabularyRepository? vocabularyRepository;
   final int? initialPageIndex;
   final double? initialScrollProgress;
@@ -172,6 +176,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
                 if (_isChromeVisible)
                   _ReaderTopChrome(
                     title: widget.displayTitle ?? package.metadata.title,
+                    onAskQuestion: _openQuestionAnswer,
                     onSummarize: _summarizeCurrentPage,
                     onVocabulary: _openVocabulary,
                     onSettings: _showSettings,
@@ -464,9 +469,7 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$expression 번역 중...')));
+    _showTranslationProgress(expression);
     final result = _isSingleExpression(expression)
         ? await service.explainWord(
             expression: expression,
@@ -513,9 +516,24 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$expression 간단 번역 중...')));
+    _showTranslationProgress(expression);
+    final service = widget.translationService;
+    if (service != null) {
+      final result = await service.translateSelection(selectedText: expression);
+      if (!mounted) {
+        return;
+      }
+      switch (result) {
+        case AiSuccess(value: final action):
+          await _showTranslationResult(action, sourceSentence: sourceSentence);
+          return;
+        case AiFailure(kind: AiFailureKind.missingKey):
+          break;
+        case AiFailure():
+          break;
+      }
+    }
+
     try {
       final translated = await client.translateToKorean(expression);
       if (!mounted) {
@@ -539,6 +557,16 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('간단 번역 실패: $error')));
     }
+  }
+
+  void _showTranslationProgress(String expression) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${readerActionPreview(expression)} translation in progress...',
+        ),
+      ),
+    );
   }
 
   Future<void> _addSelectedVocabulary(
@@ -689,6 +717,29 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('OpenAI 토큰을 저장했습니다. 다시 번역해 주세요.')),
+    );
+  }
+
+  Future<void> _openQuestionAnswer() async {
+    final service = widget.questionAnswerService;
+    final package = _currentPackage ?? widget.package;
+    if (service == null || package == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OpenAI API key is required for Q&A.')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => _QuestionAnswerSheet(
+        service: service,
+        paperTitle: widget.displayTitle ?? package.metadata.title,
+        paperText: _paperTextForQuestion(package),
+        onMissingKey: _showOpenAiTokenDialog,
+      ),
     );
   }
 
@@ -872,6 +923,17 @@ DocumentBlock _blockForPageItem(DocumentBlock block, ReaderPageItem item) {
     assetId: block.assetId,
     latex: block.latex,
     source: block.source,
+    textSpans: [
+      for (final span in block.textSpans)
+        if (span.end > startOffset && span.start < endOffset)
+          TextStyleSpan(
+            start: math.max(span.start, startOffset) - startOffset,
+            end: math.min(span.end, endOffset) - startOffset,
+            bold: span.bold,
+            italic: span.italic,
+            highlight: span.highlight,
+          ),
+    ],
     referenceSpans: [
       for (final span in block.referenceSpans)
         if (span.end > startOffset && span.start < endOffset)
@@ -943,12 +1005,14 @@ final class _ReaderPageSlider extends StatelessWidget {
 final class _ReaderTopChrome extends StatelessWidget {
   const _ReaderTopChrome({
     required this.title,
+    required this.onAskQuestion,
     required this.onSummarize,
     required this.onVocabulary,
     required this.onSettings,
   });
 
   final String title;
+  final VoidCallback onAskQuestion;
   final VoidCallback onSummarize;
   final VoidCallback onVocabulary;
   final VoidCallback onSettings;
@@ -980,6 +1044,11 @@ final class _ReaderTopChrome extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  IconButton(
+                    tooltip: 'Ask about this paper',
+                    icon: const Icon(Icons.question_answer_outlined),
+                    onPressed: onAskQuestion,
+                  ),
                   IconButton(
                     tooltip: '현재 페이지 요약',
                     icon: const Icon(Icons.summarize_outlined),
@@ -1110,6 +1179,18 @@ final class _ReaderBlock extends StatelessWidget {
       color: readerTheme.textColor,
     );
 
+    if (block.source?['role'] == 'horizontalRule') {
+      return Padding(
+        key: Key('reader-horizontal-rule-${block.id}'),
+        padding: EdgeInsets.only(bottom: addBottomSpacing ? 16 : 0),
+        child: Divider(
+          color: readerTheme.textColor.withValues(alpha: 0.28),
+          thickness: 1,
+          height: 24,
+        ),
+      );
+    }
+
     final asset = block.assetId == null ? null : assetsById[block.assetId];
     if (asset != null &&
         {
@@ -1159,6 +1240,7 @@ final class _ReaderBlock extends StatelessWidget {
         ),
         child: _ReferenceSelectableText(
           text: text,
+          textSpans: block.textSpans,
           referenceSpans: block.referenceSpans,
           assetsById: assetsById,
           style: isHeading
@@ -1363,6 +1445,7 @@ bool _looksLikeHeading(String text) {
 final class _ReferenceSelectableText extends StatefulWidget {
   const _ReferenceSelectableText({
     required this.text,
+    required this.textSpans,
     required this.referenceSpans,
     required this.assetsById,
     required this.style,
@@ -1374,6 +1457,7 @@ final class _ReferenceSelectableText extends StatefulWidget {
   });
 
   final String text;
+  final List<TextStyleSpan> textSpans;
   final List<ReferenceSpan> referenceSpans;
   final Map<String, DocumentAsset> assetsById;
   final TextStyle style;
@@ -1409,8 +1493,11 @@ final class _ReferenceSelectableTextState
           span,
     ];
     final validSpans = _validReferenceSpans(widget.text, renderableSpans);
+    final validStyleSpans = _validTextStyleSpans(widget.text, widget.textSpans);
 
-    if (validSpans.isEmpty && !hasReadableMathMarkers(widget.text)) {
+    if (validSpans.isEmpty &&
+        validStyleSpans.isEmpty &&
+        !hasReadableMathMarkers(widget.text)) {
       return SelectableText(
         widget.text,
         style: widget.style,
@@ -1425,11 +1512,13 @@ final class _ReferenceSelectableTextState
 
     for (final span in validSpans) {
       if (offset < span.start) {
-        _appendReadableMathSpans(
+        _appendStyledReadableTextSpans(
           context,
           children,
-          widget.text.substring(offset, span.start),
+          offset,
+          span.start,
           widget.style,
+          validStyleSpans,
         );
       }
 
@@ -1475,11 +1564,13 @@ final class _ReferenceSelectableTextState
     }
 
     if (offset < widget.text.length) {
-      _appendReadableMathSpans(
+      _appendStyledReadableTextSpans(
         context,
         children,
-        widget.text.substring(offset),
+        offset,
+        widget.text.length,
         widget.style,
+        validStyleSpans,
       );
     }
 
@@ -1488,6 +1579,50 @@ final class _ReferenceSelectableTextState
       textScaler: TextScaler.noScaling,
       contextMenuBuilder: _buildContextMenu,
     );
+  }
+
+  void _appendStyledReadableTextSpans(
+    BuildContext context,
+    List<InlineSpan> children,
+    int start,
+    int end,
+    TextStyle baseStyle,
+    List<TextStyleSpan> styleSpans,
+  ) {
+    var cursor = start;
+    for (final span in styleSpans) {
+      if (span.end <= start || span.start >= end) {
+        continue;
+      }
+      final spanStart = math.max(span.start, start);
+      final spanEnd = math.min(span.end, end);
+      if (cursor < spanStart) {
+        _appendReadableMathSpans(
+          context,
+          children,
+          widget.text.substring(cursor, spanStart),
+          baseStyle,
+        );
+      }
+      if (spanStart < spanEnd) {
+        _appendReadableMathSpans(
+          context,
+          children,
+          widget.text.substring(spanStart, spanEnd),
+          _textStyleForSpan(context, baseStyle, span),
+        );
+      }
+      cursor = spanEnd;
+    }
+
+    if (cursor < end) {
+      _appendReadableMathSpans(
+        context,
+        children,
+        widget.text.substring(cursor, end),
+        baseStyle,
+      );
+    }
   }
 
   void _appendReadableMathSpans(
@@ -1500,7 +1635,7 @@ final class _ReferenceSelectableTextState
       return;
     }
     if (!hasReadableMathMarkers(text)) {
-      children.add(TextSpan(text: text));
+      children.add(TextSpan(text: text, style: baseStyle));
       return;
     }
 
@@ -1621,6 +1756,53 @@ List<ReferenceSpan> _validReferenceSpans(
   return validSpans;
 }
 
+List<TextStyleSpan> _validTextStyleSpans(
+  String text,
+  List<TextStyleSpan> textSpans,
+) {
+  final validSpans = <TextStyleSpan>[];
+  final sortedSpans = [...textSpans]
+    ..sort((a, b) {
+      final startComparison = a.start.compareTo(b.start);
+      if (startComparison != 0) {
+        return startComparison;
+      }
+      return a.end.compareTo(b.end);
+    });
+
+  for (final span in sortedSpans) {
+    if (span.start < 0 || span.end <= span.start || span.end > text.length) {
+      continue;
+    }
+    if (!span.bold && !span.italic && !span.highlight) {
+      continue;
+    }
+    validSpans.add(span);
+  }
+
+  return validSpans;
+}
+
+TextStyle _textStyleForSpan(
+  BuildContext context,
+  TextStyle baseStyle,
+  TextStyleSpan span,
+) {
+  var style = baseStyle;
+  if (span.bold) {
+    style = style.copyWith(fontWeight: FontWeight.w700);
+  }
+  if (span.italic) {
+    style = style.copyWith(fontStyle: FontStyle.italic);
+  }
+  if (span.highlight) {
+    style = style.copyWith(
+      backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+    );
+  }
+  return style;
+}
+
 List<DocumentBlock> _referenceBlocksForCitation(
   DocumentPackage package,
   String citationLabel,
@@ -1711,6 +1893,145 @@ final class _ReferenceViewerSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+final class _QuestionAnswerSheet extends StatefulWidget {
+  const _QuestionAnswerSheet({
+    required this.service,
+    required this.paperTitle,
+    required this.paperText,
+    required this.onMissingKey,
+  });
+
+  final QuestionAnswerService service;
+  final String paperTitle;
+  final String paperText;
+  final Future<void> Function() onMissingKey;
+
+  @override
+  State<_QuestionAnswerSheet> createState() => _QuestionAnswerSheetState();
+}
+
+final class _QuestionAnswerSheetState extends State<_QuestionAnswerSheet> {
+  final _controller = TextEditingController();
+  QuestionAnswer? _answer;
+  String? _error;
+  var _isAsking = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final textTheme = Theme.of(context).textTheme;
+
+    return SafeArea(
+      key: const Key('reader-question-answer-sheet'),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(24, 8, 24, 24 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.question_answer_outlined, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.paperTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('reader-question-input'),
+              controller: _controller,
+              minLines: 1,
+              maxLines: 3,
+              textInputAction: TextInputAction.send,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Question',
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: _isAsking ? null : _submit,
+                icon: _isAsking
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_outlined),
+                label: const Text('Ask'),
+              ),
+            ),
+            if (_error case final error?) ...[
+              const SizedBox(height: 16),
+              Text(
+                error,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            if (_answer case final answer?) ...[
+              const SizedBox(height: 16),
+              Text(answer.question, style: textTheme.titleMedium),
+              const SizedBox(height: 8),
+              SelectableText(answer.answer),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final question = _controller.text.trim();
+    if (question.isEmpty || _isAsking) {
+      return;
+    }
+
+    setState(() {
+      _isAsking = true;
+      _error = null;
+    });
+    final result = await widget.service.answerQuestion(
+      question: question,
+      paperTitle: widget.paperTitle,
+      paperText: widget.paperText,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    switch (result) {
+      case AiSuccess(value: final answer):
+        setState(() {
+          _answer = answer;
+          _isAsking = false;
+        });
+      case AiFailure(kind: AiFailureKind.missingKey):
+        setState(() => _isAsking = false);
+        await widget.onMissingKey();
+      case AiFailure(message: final message):
+        setState(() {
+          _error = message;
+          _isAsking = false;
+        });
+    }
   }
 }
 
@@ -1872,6 +2193,35 @@ final class _OriginalPdfFallbackState extends State<_OriginalPdfFallback> {
 
     return PdfViewPinch(controller: controller);
   }
+}
+
+String _paperTextForQuestion(DocumentPackage package) {
+  final buffer = StringBuffer();
+  final blocksById = {for (final block in package.blocks) block.id: block};
+  for (final section in package.sections) {
+    if (section.title.trim().isNotEmpty) {
+      buffer.writeln(section.title.trim());
+      buffer.writeln();
+    }
+    for (final blockId in section.blockIds) {
+      final block = blocksById[blockId];
+      final text = block?.text?.trim();
+      if (text == null || text.isEmpty) {
+        continue;
+      }
+      buffer.writeln(text);
+      buffer.writeln();
+    }
+  }
+  final text = buffer.toString().trim();
+  if (text.isNotEmpty) {
+    return text;
+  }
+  return package.blocks
+      .map((block) => block.text?.trim())
+      .whereType<String>()
+      .where((text) => text.isNotEmpty)
+      .join('\n\n');
 }
 
 String _fileExtension(String path) {

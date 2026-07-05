@@ -40,6 +40,33 @@
         "$ref": "#/$defs/DocumentAsset"
       }
     },
+    "conversionMode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fallbackReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceInfo": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": [
+          "string",
+          "integer",
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    },
     "anchors": {
       "type": "array",
       "items": {
@@ -189,6 +216,34 @@
             "null"
           ]
         },
+        "latex": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "textSpans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TextStyleSpan"
+          },
+          "default": []
+        },
         "referenceSpans": {
           "type": "array",
           "items": {
@@ -235,6 +290,34 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "TextStyleSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "integer"
+        },
+        "end": {
+          "type": "integer"
+        },
+        "bold": {
+          "type": "boolean",
+          "default": false
+        },
+        "italic": {
+          "type": "boolean",
+          "default": false
+        },
+        "highlight": {
+          "type": "boolean",
+          "default": false
         }
       }
     },

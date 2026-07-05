@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:thesis_reader/features/ai/data/openai_client.dart';
 import 'package:thesis_reader/features/ai/data/openai_key_store.dart';
 import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
+import 'package:thesis_reader/features/ai/domain/question_answer_service.dart';
 import 'package:thesis_reader/features/ai/domain/summary_service.dart';
 import 'package:thesis_reader/features/ai/domain/translation_service.dart';
 import 'package:thesis_reader/features/library/data/converter_client.dart';
@@ -76,6 +77,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
   SimpleTranslationClient? _simpleTranslationClient;
   TranslationService? _translationService;
   SummaryService? _summaryService;
+  QuestionAnswerService? _questionAnswerService;
   VocabularyRepository? _vocabularyRepository;
   LibraryRepository? _libraryRepository;
   ReaderSettingsRepository? _readerSettingsRepository;
@@ -119,6 +121,11 @@ class _LibraryHomeState extends State<_LibraryHome> {
 
   SummaryService get _appSummaryService =>
       _summaryService ??= SummaryService(openAiClient: _appOpenAiClient);
+
+  QuestionAnswerService get _appQuestionAnswerService =>
+      _questionAnswerService ??= QuestionAnswerService(
+        openAiClient: _appOpenAiClient,
+      );
 
   VocabularyRepository get _appVocabularyRepository =>
       _vocabularyRepository ??= DriftVocabularyRepository(_appDatabase);
@@ -236,6 +243,7 @@ class _LibraryHomeState extends State<_LibraryHome> {
           simpleTranslationClient: _appSimpleTranslationClient,
           translationService: _appTranslationService,
           summaryService: _appSummaryService,
+          questionAnswerService: _appQuestionAnswerService,
           vocabularyRepository: _appVocabularyRepository,
           initialPageIndex: _pageIndexByDocumentId[documentId],
           initialScrollProgress: _scrollProgressByDocumentId[documentId],

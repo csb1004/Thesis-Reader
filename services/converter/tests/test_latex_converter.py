@@ -1,5 +1,5 @@
 from services.converter.app.conversion.latex_converter import convert_latex_source_to_package
-from services.converter.app.models.document_package import BlockKind
+from services.converter.app.models.document_package import BlockKind, ReferenceKind
 
 
 def test_converts_latex_sections_paragraphs_equations_and_references(tmp_path):
@@ -252,3 +252,86 @@ Training is performed by optimizing the variational bound:
     assert assets[0].kind == "equation"
     assert assets[0].relativePath == "assets/eq-1.png"
     assert (output_dir / assets[0].relativePath).read_bytes().startswith(b"\x89PNG")
+
+
+def test_rewrites_latex_citation_keys_to_numbered_reference_spans(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Citations}
+\begin{document}
+\section{Related Work}
+Transformers rely on attention \citep{vaswani2017attention,kingma2013auto}.
+\begin{thebibliography}{9}
+\bibitem{vaswani2017attention} Vaswani et al. Attention is all you need.
+\bibitem{kingma2013auto} Kingma and Welling. Auto-Encoding Variational Bayes.
+\end{thebibliography}
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="paper.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "1706.03762", "mainTex": "main.tex"},
+    )
+
+    paragraph = next(block for block in package.blocks if block.kind == BlockKind.paragraph)
+    assert paragraph.text == "Transformers rely on attention [1, 2]."
+    assert [(span.kind, span.label) for span in paragraph.referenceSpans] == [
+        (ReferenceKind.citation, "[1, 2]")
+    ]
+    assert paragraph.text[paragraph.referenceSpans[0].start : paragraph.referenceSpans[0].end] == "[1, 2]"
+    references = [block.text for block in package.blocks if block.kind == BlockKind.reference]
+    assert references == [
+        "[1] Vaswani et al. Attention is all you need.",
+        "[2] Kingma and Welling. Auto-Encoding Variational Bayes.",
+    ]
+
+
+def test_preserves_common_latex_text_structure_and_style_spans(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Structure}
+\begin{document}
+\section{Formatting}
+First line\\
+Second line with \textbf{bold} and \hl{marked}.
+\hrule
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="paper.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "1234.56789", "mainTex": "main.tex"},
+    )
+
+    paragraph = next(block for block in package.blocks if block.kind == BlockKind.paragraph)
+    assert paragraph.text == "First line\nSecond line with bold and marked."
+    assert paragraph.source["preserveStructure"] is True
+    assert [
+        (span.start, span.end, span.bold, span.highlight)
+        for span in paragraph.textSpans
+    ] == [
+        (28, 32, True, False),
+        (37, 43, False, True),
+    ]
+    rules = [
+        block
+        for block in package.blocks
+        if block.source and block.source.get("role") == "horizontalRule"
+    ]
+    assert len(rules) == 1

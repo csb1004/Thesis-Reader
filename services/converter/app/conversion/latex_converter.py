@@ -17,6 +17,9 @@ from services.converter.app.models.document_package import (
     DocumentPackage,
     DocumentSection,
     ReadingAnchor,
+    ReferenceKind,
+    ReferenceSpan,
+    TextStyleSpan,
 )
 
 DISPLAY_ENVIRONMENTS = (
@@ -29,6 +32,7 @@ DISPLAY_ENVIRONMENTS = (
     "multline",
     "multline*",
 )
+LINE_BREAK_MARKER = "@@LATEX_LINE_BREAK@@"
 
 
 def convert_latex_source_to_package(
@@ -137,6 +141,8 @@ def _extract_blocks(body: str) -> list[DocumentBlock]:
                         sectionId="",
                         kind=BlockKind.heading,
                         text=token["text"],
+                        textSpans=token.get("textSpans", []),
+                        referenceSpans=token.get("referenceSpans", []),
                     )
                 )
             case "equation":
@@ -180,6 +186,19 @@ def _extract_blocks(body: str) -> list[DocumentBlock]:
                         text=token["text"],
                     )
                 )
+            case "horizontalRule":
+                blocks.append(
+                    DocumentBlock(
+                        id=block_id,
+                        sectionId="",
+                        kind=BlockKind.paragraph,
+                        source={
+                            "mode": "latex",
+                            "role": "horizontalRule",
+                            "preserveStructure": True,
+                        },
+                    )
+                )
             case _:
                 blocks.append(
                     DocumentBlock(
@@ -187,6 +206,9 @@ def _extract_blocks(body: str) -> list[DocumentBlock]:
                         sectionId="",
                         kind=BlockKind.paragraph,
                         text=token["text"],
+                        source=token.get("source"),
+                        textSpans=token.get("textSpans", []),
+                        referenceSpans=token.get("referenceSpans", []),
                     )
                 )
     return blocks
@@ -312,11 +334,18 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
         flags=re.DOTALL,
     )
 
-    references = re.findall(
-        r"\\bibitem(?:\[[^\]]+\])?\{[^}]+\}(?P<value>.*?)(?=\\bibitem|\\end\{thebibliography\})",
+    body = re.sub(
+        r"\\(?:hrule|rule\{[^{}]*\}\{[^{}]*\})",
+        lambda _match: protect("horizontalRule", ""),
         body,
-        flags=re.DOTALL,
     )
+
+    references = _extract_bibitems(body)
+    citation_numbers = {
+        reference["key"]: str(index)
+        for index, reference in enumerate(references, start=1)
+        if reference["key"]
+    }
     body = re.sub(
         r"\\begin\{thebibliography\}(?:\{[^}]*\})?.*?\\end\{thebibliography\}",
         "",
@@ -343,6 +372,8 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
                     )
                 case "heading":
                     tokens.append({"kind": "heading", "text": item["text"]})
+                case "horizontalRule":
+                    tokens.append({"kind": "horizontalRule"})
                 case "table":
                     tokens.append(
                         {
@@ -360,12 +391,28 @@ def _tokenize_body(body: str) -> list[dict[str, str]]:
                         }
                     )
             continue
-        cleaned = _clean_text(chunk)
+        cleaned, text_spans, reference_spans = _clean_text_metadata(
+            chunk,
+            citation_numbers,
+        )
         if cleaned:
-            tokens.append({"kind": "paragraph", "text": cleaned})
+            token: dict[str, str | bool | list[TextStyleSpan] | list[ReferenceSpan] | dict[str, bool | str]] = {
+                "kind": "paragraph",
+                "text": cleaned,
+            }
+            if "\n" in cleaned:
+                token["source"] = {
+                    "mode": "latex",
+                    "preserveStructure": True,
+                }
+            if text_spans:
+                token["textSpans"] = text_spans
+            if reference_spans:
+                token["referenceSpans"] = reference_spans
+            tokens.append(token)
 
     for index, reference in enumerate(references, start=1):
-        cleaned = _clean_text(reference)
+        cleaned = _clean_text(reference["value"], citation_numbers)
         if cleaned:
             tokens.append({"kind": "reference", "text": f"[{index}] {cleaned}"})
 
@@ -383,20 +430,107 @@ def _figure_text(text: str) -> str:
     return _clean_text(text)
 
 
-def _clean_text(text: str) -> str:
+def _extract_bibitems(text: str) -> list[dict[str, str]]:
+    pattern = re.compile(
+        r"\\bibitem(?:\[[^\]]+\])?\{(?P<key>[^}]+)\}"
+        r"(?P<value>.*?)(?=\\bibitem|\\end\{thebibliography\})",
+        flags=re.DOTALL,
+    )
+    return [
+        {
+            "key": match.group("key").strip(),
+            "value": match.group("value").strip(),
+        }
+        for match in pattern.finditer(text)
+    ]
+
+
+def _clean_text(
+    text: str,
+    citation_numbers: dict[str, str] | None = None,
+) -> str:
+    cleaned, _, _ = _clean_text_metadata(text, citation_numbers)
+    return cleaned
+
+
+def _clean_text_metadata(
+    text: str,
+    citation_numbers: dict[str, str] | None = None,
+) -> tuple[str, list[TextStyleSpan], list[ReferenceSpan]]:
+    style_markers: list[dict[str, bool]] = []
+    citation_markers: list[str] = []
     cleaned = text.replace("~", " ")
     cleaned = re.sub(r"\\(?:maketitle|begin\{abstract\}|end\{abstract\})", " ", cleaned)
-    cleaned = _replace_citations(cleaned)
+    cleaned = _mark_text_style_commands(cleaned, style_markers)
+    cleaned = _replace_citations(cleaned, citation_numbers or {}, citation_markers)
     cleaned = _replace_references(cleaned)
     cleaned = _replace_inline_math(cleaned)
+    cleaned = re.sub(r"\\\\(?:\[[^\]]+\])?", f" {LINE_BREAK_MARKER} ", cleaned)
+    cleaned = re.sub(
+        r"\\(?:newline|linebreak|par)\b(?:\[[^\]]+\])?",
+        f" {LINE_BREAK_MARKER} ",
+        cleaned,
+    )
     cleaned = re.sub(r"\\label\{[^}]+\}", " ", cleaned)
     cleaned = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]+\])?\{([^{}]*)\}", r"\1", cleaned)
     cleaned = re.sub(r"\\[a-zA-Z]+\*?", " ", cleaned)
     cleaned = cleaned.replace("{", "").replace("}", "")
-    return re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = _normalize_text_whitespace(cleaned)
+    return _extract_marked_text_spans(cleaned, style_markers, citation_markers)
 
 
-def _replace_citations(text: str) -> str:
+def _mark_text_style_commands(text: str, markers: list[dict[str, bool]]) -> str:
+    command_styles = {
+        "textbf": {"bold": True, "italic": False, "highlight": False},
+        "textit": {"bold": False, "italic": True, "highlight": False},
+        "emph": {"bold": False, "italic": True, "highlight": False},
+        "hl": {"bold": False, "italic": False, "highlight": True},
+    }
+
+    changed = True
+    while changed:
+        changed = False
+        for command, style in command_styles.items():
+            pattern = re.compile(rf"\\{command}\{{(?P<value>[^{{}}]*)\}}")
+
+            def replace(match: re.Match[str], style: dict[str, bool] = style) -> str:
+                nonlocal changed
+                changed = True
+                marker_id = len(markers)
+                markers.append(style)
+                return (
+                    f"@@STYLE_{marker_id}_START@@"
+                    f"{match.group('value')}"
+                    f"@@STYLE_{marker_id}_END@@"
+                )
+
+            text = pattern.sub(replace, text)
+
+        colorbox_pattern = re.compile(
+            r"\\colorbox\{[^{}]*\}\{(?P<value>[^{}]*)\}"
+        )
+
+        def replace_colorbox(match: re.Match[str]) -> str:
+            nonlocal changed
+            changed = True
+            marker_id = len(markers)
+            markers.append({"bold": False, "italic": False, "highlight": True})
+            return (
+                f"@@STYLE_{marker_id}_START@@"
+                f"{match.group('value')}"
+                f"@@STYLE_{marker_id}_END@@"
+            )
+
+        text = colorbox_pattern.sub(replace_colorbox, text)
+
+    return text
+
+
+def _replace_citations(
+    text: str,
+    citation_numbers: dict[str, str],
+    markers: list[str],
+) -> str:
     citation_commands = (
         "cite",
         "citep",
@@ -413,9 +547,85 @@ def _replace_citations(text: str) -> str:
 
     def replace(match: re.Match[str]) -> str:
         keys = [key.strip() for key in match.group("keys").split(",") if key.strip()]
-        return f"[{', '.join(keys)}]" if keys else ""
+        labels = [citation_numbers.get(key, key) for key in keys]
+        label = f"[{', '.join(labels)}]" if labels else ""
+        if not label:
+            return ""
+        marker_id = len(markers)
+        markers.append(label)
+        return f"@@CITE_{marker_id}_START@@{label}@@CITE_{marker_id}_END@@"
 
     return pattern.sub(replace, text)
+
+
+def _normalize_text_whitespace(text: str) -> str:
+    text = re.sub(r"\s+", " ", text)
+    text = text.replace(f" {LINE_BREAK_MARKER} ", "\n")
+    text = text.replace(LINE_BREAK_MARKER, "\n")
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _extract_marked_text_spans(
+    text: str,
+    style_markers: list[dict[str, bool]],
+    citation_markers: list[str],
+) -> tuple[str, list[TextStyleSpan], list[ReferenceSpan]]:
+    token_pattern = re.compile(
+        r"@@(?P<kind>STYLE|CITE)_(?P<index>\d+)_(?P<edge>START|END)@@"
+    )
+    output: list[str] = []
+    style_starts: dict[int, int] = {}
+    citation_starts: dict[int, int] = {}
+    text_spans: list[TextStyleSpan] = []
+    reference_spans: list[ReferenceSpan] = []
+    cursor = 0
+    output_length = 0
+
+    for match in token_pattern.finditer(text):
+        literal = text[cursor : match.start()]
+        output.append(literal)
+        output_length += len(literal)
+
+        index = int(match.group("index"))
+        edge = match.group("edge")
+        if match.group("kind") == "STYLE":
+            if edge == "START":
+                style_starts[index] = output_length
+            else:
+                start = style_starts.pop(index, output_length)
+                if output_length > start:
+                    flags = style_markers[index]
+                    text_spans.append(
+                        TextStyleSpan(
+                            start=start,
+                            end=output_length,
+                            bold=flags["bold"],
+                            italic=flags["italic"],
+                            highlight=flags["highlight"],
+                        )
+                    )
+        elif edge == "START":
+            citation_starts[index] = output_length
+        else:
+            start = citation_starts.pop(index, output_length)
+            if output_length > start:
+                reference_spans.append(
+                    ReferenceSpan(
+                        start=start,
+                        end=output_length,
+                        targetAssetId="",
+                        kind=ReferenceKind.citation,
+                        label=citation_markers[index],
+                    )
+                )
+        cursor = match.end()
+
+    literal = text[cursor:]
+    output.append(literal)
+    output_text = "".join(output).strip()
+    return output_text, text_spans, reference_spans
 
 
 def _replace_references(text: str) -> str:

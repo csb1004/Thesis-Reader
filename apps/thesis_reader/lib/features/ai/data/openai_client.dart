@@ -71,13 +71,36 @@ class OpenAiRequest {
   factory OpenAiRequest.translateSelection({required String selectedText}) {
     return OpenAiRequest(
       instructions: [
-        'Translate English academic prose into natural Korean.',
-        'Preserve technical meaning and citation markers.',
+        'Translate English academic prose into fluent, natural Korean for a thesis reader.',
+        'Do not translate word-by-word when a Korean academic phrasing would be clearer.',
+        'Preserve technical terms, variables, equations, and citation markers.',
+        'Keep paragraph breaks when they help readability.',
         'Return only the Korean translation.',
       ].join(' '),
       input: _labeledInput({
         'Task': 'Translate the selected text into Korean.',
         'Selected text': selectedText,
+      }),
+    );
+  }
+
+  factory OpenAiRequest.answerPaperQuestion({
+    required String question,
+    required String paperText,
+    String? paperTitle,
+  }) {
+    return OpenAiRequest(
+      instructions: [
+        'You answer questions about an academic paper for a Korean thesis reader.',
+        'Answer in Korean unless the user explicitly asks for another language.',
+        'Use only the provided paper context. If the context is insufficient, say so clearly.',
+        'Be concise, cite the relevant section or phrase when useful, and preserve technical terms.',
+      ].join(' '),
+      input: _labeledInput({
+        'Task': 'Answer the user question using the paper context.',
+        'Paper title': paperTitle,
+        'Question': question,
+        'Paper context': _truncateForInput(paperText),
       }),
     );
   }
@@ -270,4 +293,12 @@ String _labeledInput(Map<String, String?> fields) {
       .where((entry) => entry.value != null && entry.value!.trim().isNotEmpty)
       .map((entry) => '${entry.key}:\n${entry.value!.trim()}')
       .join('\n\n');
+}
+
+String _truncateForInput(String text, {int maxChars = 12000}) {
+  final trimmed = text.trim();
+  if (trimmed.length <= maxChars) {
+    return trimmed;
+  }
+  return '${trimmed.substring(0, maxChars).trimRight()}\n\n[Context truncated]';
 }

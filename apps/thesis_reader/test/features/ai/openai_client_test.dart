@@ -110,6 +110,22 @@ void main() {
     },
   );
 
+  test('builds paper question requests with local paper context', () {
+    final request = OpenAiRequest.answerPaperQuestion(
+      question: 'What is the main contribution?',
+      paperText: 'The paper proposes a compact reader architecture.',
+      paperTitle: 'Thesis Reader',
+    );
+
+    final body = request.toJson();
+
+    expect(body['instructions'], contains('answer questions'));
+    expect(body['instructions'], contains('Korean'));
+    expect(body['input'], contains('Thesis Reader'));
+    expect(body['input'], contains('What is the main contribution?'));
+    expect(body['input'], contains('compact reader architecture'));
+  });
+
   test('returns typed failures for api errors and invalid JSON', () async {
     final apiErrorClient = OpenAiClient(
       keyStore: FakeKeyStore('sk-test'),

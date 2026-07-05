@@ -50,6 +50,14 @@ class ReferenceSpan(ContractModel):
     label: str | None = None
 
 
+class TextStyleSpan(ContractModel):
+    start: int
+    end: int
+    bold: bool = False
+    italic: bool = False
+    highlight: bool = False
+
+
 class DocumentMetadata(ContractModel):
     title: str
     sourceFilename: str
@@ -73,6 +81,7 @@ class DocumentBlock(ContractModel):
     assetId: str | None = None
     latex: str | None = None
     source: dict[str, str | int | float | bool | None] | None = None
+    textSpans: list[TextStyleSpan] = Field(default_factory=list)
     referenceSpans: list[ReferenceSpan] = Field(default_factory=list)
     anchor: ReadingAnchor | None = None
 

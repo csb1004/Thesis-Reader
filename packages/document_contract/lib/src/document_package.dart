@@ -165,6 +165,7 @@ final class DocumentBlock {
     this.assetId,
     this.latex,
     this.source,
+    this.textSpans = const [],
     this.referenceSpans = const [],
     this.anchor,
   });
@@ -173,6 +174,7 @@ final class DocumentBlock {
     required String id,
     required String sectionId,
     required String text,
+    List<TextStyleSpan> textSpans = const [],
     List<ReferenceSpan> referenceSpans = const [],
     ReadingAnchor? anchor,
   }) : this(
@@ -180,6 +182,7 @@ final class DocumentBlock {
          sectionId: sectionId,
          kind: BlockKind.paragraph,
          text: text,
+         textSpans: textSpans,
          referenceSpans: referenceSpans,
          anchor: anchor,
        );
@@ -193,6 +196,7 @@ final class DocumentBlock {
       assetId: json['assetId'] as String?,
       latex: json['latex'] as String?,
       source: _readOptionalMap(json['source']),
+      textSpans: _readOptionalList(json['textSpans'], TextStyleSpan.fromJson),
       referenceSpans: _readOptionalList(
         json['referenceSpans'],
         ReferenceSpan.fromJson,
@@ -208,6 +212,7 @@ final class DocumentBlock {
   final String? assetId;
   final String? latex;
   final Map<String, Object?>? source;
+  final List<TextStyleSpan> textSpans;
   final List<ReferenceSpan> referenceSpans;
   final ReadingAnchor? anchor;
 
@@ -219,8 +224,43 @@ final class DocumentBlock {
     'assetId': assetId,
     'latex': latex,
     'source': source,
+    'textSpans': textSpans.map((span) => span.toJson()).toList(),
     'referenceSpans': referenceSpans.map((span) => span.toJson()).toList(),
     'anchor': anchor?.toJson(),
+  };
+}
+
+final class TextStyleSpan {
+  const TextStyleSpan({
+    required this.start,
+    required this.end,
+    this.bold = false,
+    this.italic = false,
+    this.highlight = false,
+  });
+
+  factory TextStyleSpan.fromJson(Map<String, Object?> json) {
+    return TextStyleSpan(
+      start: json['start']! as int,
+      end: json['end']! as int,
+      bold: json['bold'] as bool? ?? false,
+      italic: json['italic'] as bool? ?? false,
+      highlight: json['highlight'] as bool? ?? false,
+    );
+  }
+
+  final int start;
+  final int end;
+  final bool bold;
+  final bool italic;
+  final bool highlight;
+
+  Map<String, Object?> toJson() => {
+    'start': start,
+    'end': end,
+    'bold': bold,
+    'italic': italic,
+    'highlight': highlight,
   };
 }
 

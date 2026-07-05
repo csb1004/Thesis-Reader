@@ -9,6 +9,7 @@ from services.converter.app.models.document_package import (
     DocumentMetadata,
     DocumentPackage,
     DocumentSection,
+    TextStyleSpan,
 )
 
 
@@ -102,6 +103,52 @@ def test_document_package_serializes_conversion_metadata_and_latex_block():
     assert payload["sourceInfo"]["arxivId"] == "2006.11239"
     assert payload["blocks"][0]["latex"].startswith("q(x_t")
     assert payload["blocks"][0]["source"]["environment"] == "equation"
+
+
+def test_document_package_serializes_structured_text_spans():
+    package = DocumentPackage(
+        packageVersion=1,
+        documentId="doc-1",
+        metadata=DocumentMetadata(
+            title="Structured TeX",
+            sourceFilename="paper.pdf",
+            originalPdfSha256="abc123",
+        ),
+        sections=[DocumentSection(id="sec-1", title="Document", blockIds=["b1"])],
+        blocks=[
+            DocumentBlock(
+                id="b1",
+                sectionId="sec-1",
+                kind=BlockKind.paragraph,
+                text="First line\nSecond line with bold and marked.",
+                source={"mode": "latex", "preserveStructure": True},
+                textSpans=[
+                    TextStyleSpan(start=28, end=32, bold=True),
+                    TextStyleSpan(start=37, end=43, highlight=True),
+                ],
+            )
+        ],
+        assets=[],
+    )
+
+    payload = package.model_dump(mode="json")
+
+    assert payload["blocks"][0]["textSpans"] == [
+        {
+            "start": 28,
+            "end": 32,
+            "bold": True,
+            "italic": False,
+            "highlight": False,
+        },
+        {
+            "start": 37,
+            "end": 43,
+            "bold": False,
+            "italic": False,
+            "highlight": True,
+        },
+    ]
 
 
 def test_document_package_rejects_unexpected_fields():

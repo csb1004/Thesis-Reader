@@ -187,8 +187,7 @@ void main() {
 
     final chunks = [
       for (final page in layout.pages)
-        for (final item in page.items)
-          if (item.text case final text?) text,
+        for (final item in page.items) ?item.text,
     ];
 
     expect(chunks, isNotEmpty);

@@ -89,6 +89,47 @@ void main() {
     expect(package.blocks.single.source?['environment'], 'equation');
   });
 
+  test('package round trips structured text style spans', () {
+    final package = DocumentPackage.fromJson({
+      'packageVersion': 1,
+      'documentId': 'doc-1',
+      'metadata': {
+        'title': 'Styled TeX',
+        'sourceFilename': 'styled.pdf',
+        'originalPdfSha256': 'abc123',
+      },
+      'sections': [
+        {
+          'id': 'sec-1',
+          'title': 'Document',
+          'blockIds': ['b1'],
+        },
+      ],
+      'blocks': [
+        {
+          'id': 'b1',
+          'sectionId': 'sec-1',
+          'kind': 'paragraph',
+          'text': 'First line\nSecond line with bold and marked.',
+          'source': {'mode': 'latex', 'preserveStructure': true},
+          'textSpans': [
+            {'start': 28, 'end': 32, 'bold': true},
+            {'start': 37, 'end': 43, 'highlight': true},
+          ],
+        },
+      ],
+      'assets': [],
+    });
+
+    final block = package.blocks.single;
+
+    expect(block.text, contains('\n'));
+    expect(block.textSpans, hasLength(2));
+    expect(block.textSpans.first.bold, isTrue);
+    expect(block.textSpans.last.highlight, isTrue);
+    expect(block.toJson()['textSpans'], isA<List<Object?>>());
+  });
+
   test('missing sections throws during json parsing', () {
     final json = minimalPackageJson()..remove('sections');
 
