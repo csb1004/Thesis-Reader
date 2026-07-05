@@ -671,17 +671,18 @@ final class _ReaderScreenState extends State<ReaderScreen> {
       showDragHandle: true,
       builder: (context) {
         final textTheme = Theme.of(context).textTheme;
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.48,
-          minChildSize: 0.28,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) => SafeArea(
-            key: const Key('reader-translation-result-sheet'),
+        final maxHeightFactor = _isCompactTranslationResult(action)
+            ? 0.32
+            : 0.58;
+        final maxHeight = MediaQuery.sizeOf(context).height * maxHeightFactor;
+        return SafeArea(
+          key: const Key('reader-translation-result-sheet'),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
             child: SingleChildScrollView(
-              controller: scrollController,
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -721,6 +722,11 @@ final class _ReaderScreenState extends State<ReaderScreen> {
         );
       },
     );
+  }
+
+  bool _isCompactTranslationResult(TranslationAction action) {
+    final sourceText = action.sourceText.trim();
+    return sourceText.length <= 32 && !RegExp(r'\s').hasMatch(sourceText);
   }
 
   Future<void> _showOpenAiTokenDialog() async {

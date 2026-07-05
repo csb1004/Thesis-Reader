@@ -687,10 +687,9 @@ void main() {
     menu.buttonItems!.first.onPressed!();
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('reader-translation-result-sheet')),
-      findsOneWidget,
-    );
+    final sheet = find.byKey(const Key('reader-translation-result-sheet'));
+    expect(sheet, findsOneWidget);
+    expect(tester.getSize(sheet).height, lessThanOrEqualTo(260));
     expect(find.text('translated word'), findsOneWidget);
     expect(_hasColoredModalBarrier(tester), isFalse);
   });
