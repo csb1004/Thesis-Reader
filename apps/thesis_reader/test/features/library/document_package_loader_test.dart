@@ -180,66 +180,70 @@ void main() {
     );
   });
 
-  test('preserves cached raw section labels as ordinary text', () async {
-    final temp = await Directory.systemTemp.createTemp('package_loader_test');
-    final packageFile = File(
-      p.join(temp.path, 'packages', 'doc-1', 'package.json'),
-    );
-    await packageFile.parent.create(recursive: true);
-    await packageFile.writeAsString(
-      jsonEncode({
-        'packageVersion': 1,
-        'documentId': 'doc-1',
-        'metadata': {
-          'title': 'Cached title',
-          'sourceFilename': 'paper.pdf',
-          'originalPdfSha256': 'abc123',
-          'converterVersion': 'mvp-1',
-        },
-        'sections': [
-          {
-            'id': 'sec-1',
-            'title': 'Document',
-            'blockIds': ['block-1', 'heading-1'],
+  test(
+    'normalizes cached ASP section labels to compiled section numbers',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('package_loader_test');
+      final packageFile = File(
+        p.join(temp.path, 'packages', 'doc-1', 'package.json'),
+      );
+      await packageFile.parent.create(recursive: true);
+      await packageFile.writeAsString(
+        jsonEncode({
+          'packageVersion': 1,
+          'documentId': 'doc-1',
+          'metadata': {
+            'title': 'Cached title',
+            'sourceFilename': 'paper.pdf',
+            'originalPdfSha256': 'abc123',
+            'converterVersion': 'mvp-1',
           },
-        ],
-        'blocks': [
-          {
-            'id': 'block-1',
-            'sectionId': 'sec-1',
-            'kind': 'paragraph',
-            'text':
-                'reasoning about action (Section Section areas:ReasoningAboutActionAndPlanning), '
-                'description logics (Section Section areas:DLsOntologies), '
-                'answer set programming (Section areas.ASP).',
-          },
-          {
-            'id': 'heading-1',
-            'sectionId': 'sec-1',
-            'kind': 'heading',
-            'text': 'Reasoning About Action And Planning',
-          },
-        ],
-        'assets': [],
-      }),
-    );
+          'sections': [
+            {
+              'id': 'sec-1',
+              'title': 'Document',
+              'blockIds': ['block-1', 'heading-1'],
+            },
+          ],
+          'blocks': [
+            {
+              'id': 'block-1',
+              'sectionId': 'sec-1',
+              'kind': 'paragraph',
+              'text':
+                  'reasoning about action (Section Section areas:ReasoningAboutActionAndPlanning), '
+                  'description logics (Section Section areas:DLsOntologies), '
+                  'answer set programming (Section areas.ASP).',
+            },
+            {
+              'id': 'heading-1',
+              'sectionId': 'sec-1',
+              'kind': 'heading',
+              'text': 'Reasoning About Action And Planning',
+            },
+          ],
+          'assets': [],
+        }),
+      );
 
-    final loaded = await DocumentPackageLoader.load(
-      documentId: 'doc-1',
-      appDirectory: temp,
-      storedPackagePath: null,
-    );
+      final loaded = await DocumentPackageLoader.load(
+        documentId: 'doc-1',
+        appDirectory: temp,
+        storedPackagePath: null,
+      );
 
-    final paragraph = loaded!.package.blocks.first;
+      final paragraph = loaded!.package.blocks.first;
 
-    expect(
-      paragraph.text,
-      contains('Section Section areas:ReasoningAboutActionAndPlanning'),
-    );
-    expect(paragraph.text, contains('Section Section areas:DLsOntologies'));
-    expect(paragraph.text, contains('Section areas.ASP'));
-    expect(paragraph.referenceSpans, isEmpty);
-  });
+      expect(
+        paragraph.text,
+        contains('Section Section areas:ReasoningAboutActionAndPlanning'),
+      );
+      expect(paragraph.text, contains('Section Section areas:DLsOntologies'));
+      expect(paragraph.text, contains('Section 2.2'));
+      expect(paragraph.text, isNot(contains('Section areas.ASP')));
+      expect(paragraph.referenceSpans, isEmpty);
+    },
+  );
 
   test(
     'normalizes cached attention equation text without changing structure',

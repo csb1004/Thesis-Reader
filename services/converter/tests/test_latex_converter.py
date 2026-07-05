@@ -347,6 +347,35 @@ Answer set programming (\autoref{Section areas.ASP}) is related.
     ]
 
 
+def test_resolves_legacy_asp_section_label_to_compiled_number(tmp_path):
+    main_tex = tmp_path / "main.tex"
+    main_tex.write_text(
+        r"""
+\documentclass{article}
+\title{Internal References}
+\begin{document}
+\section{Non-monotonic reasoning}
+Answer set programming (\autoref{Section areas.ASP}) is related.
+\end{document}
+""",
+        encoding="utf-8",
+    )
+
+    package = convert_latex_source_to_package(
+        main_tex=main_tex,
+        output_dir=tmp_path / "out",
+        document_id="doc-1",
+        source_filename="paper.pdf",
+        original_pdf_sha256="abc123",
+        source_info={"arxivId": "1234.56789", "mainTex": "main.tex"},
+    )
+
+    paragraph = next(block for block in package.blocks if block.kind == BlockKind.paragraph)
+
+    assert paragraph.text == "Answer set programming (Section 2.2) is related."
+    assert paragraph.referenceSpans == []
+
+
 def test_preserves_common_latex_text_structure_and_style_spans(tmp_path):
     main_tex = tmp_path / "main.tex"
     main_tex.write_text(

@@ -121,8 +121,16 @@ abstract final class DocumentPackageLoader {
           RegExp(r'([A-Za-z])-\s+([A-Za-z])'),
           (match) => '${match.group(1)}${match.group(2)}',
         );
-    final collapsed = joinedWords.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final sectionReferences = _normalizeKnownLegacySectionLabels(joinedWords);
+    final collapsed = sectionReferences.replaceAll(RegExp(r'\s+'), ' ').trim();
     return _normalizeMathText(_normalizePunctuationSpacing(collapsed));
+  }
+
+  static String _normalizeKnownLegacySectionLabels(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'\bSection\s+(?:Section\s+)?(areas[.:]ASP)\b'),
+      (_) => 'Section 2.2',
+    );
   }
 
   static String _normalizeMathText(String text) {

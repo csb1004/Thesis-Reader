@@ -33,6 +33,10 @@ DISPLAY_ENVIRONMENTS = (
     "multline*",
 )
 LINE_BREAK_MARKER = "@@LATEX_LINE_BREAK@@"
+LEGACY_COMPILED_SECTION_NUMBERS = {
+    "areas.asp": "2.2",
+    "section areas.asp": "2.2",
+}
 
 
 def convert_latex_source_to_package(
@@ -796,7 +800,11 @@ def _human_readable_reference_label(
 ) -> tuple[str, str | None]:
     prefix_name, cleaned_body = _reference_type_and_body(command, label)
     if prefix_name == "Section":
-        cleaned_body = section_reference_numbers.get(label, cleaned_body)
+        cleaned_body = (
+            section_reference_numbers.get(label)
+            or LEGACY_COMPILED_SECTION_NUMBERS.get(label.lower())
+            or cleaned_body
+        )
         include_prefix = not _preceded_by_reference_word(
             preceding_text,
             prefix_name,
