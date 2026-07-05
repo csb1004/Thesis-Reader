@@ -692,7 +692,7 @@ def _human_readable_reference_label(
 
 
 def _reference_type_and_body(command: str, label: str) -> tuple[str | None, str]:
-    prefix, _, body = label.partition(":")
+    prefix, body = _reference_label_prefix_and_body(label)
     cleaned_body = _humanize_reference_body(body or prefix)
     prefix_name = _reference_type_for_prefix(prefix)
     if command.lower() == "eqref":
@@ -700,6 +700,18 @@ def _reference_type_and_body(command: str, label: str) -> tuple[str | None, str]
     if command.lower() == "pageref":
         prefix_name = "Page"
     return prefix_name, cleaned_body
+
+
+def _reference_label_prefix_and_body(label: str) -> tuple[str, str]:
+    prefix, separator, body = label.partition(":")
+    if separator:
+        return prefix, body
+
+    prefix, separator, body = label.partition(".")
+    if separator and body and _reference_type_for_prefix(prefix) is not None:
+        return prefix, body
+
+    return label, ""
 
 
 def _reference_type_for_prefix(prefix: str) -> str | None:

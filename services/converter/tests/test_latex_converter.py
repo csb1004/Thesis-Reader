@@ -308,6 +308,7 @@ Other areas include reasoning about action
 description logics and ontologies
 (\Autoref{Section areas:DLsOntologies}), and
 argumentation (Section~\Ref{Section areas:Argumentation}).
+Answer set programming (\autoref{Section areas.ASP}) is related.
 \end{document}
 """,
         encoding="utf-8",
@@ -331,10 +332,12 @@ argumentation (Section~\Ref{Section areas:Argumentation}).
     )
     assert "Section DLs Ontologies" in paragraph.text
     assert "Section Argumentation" in paragraph.text
+    assert "Section ASP" in paragraph.text
     assert [(span.kind, span.label) for span in paragraph.referenceSpans] == [
         (ReferenceKind.reference, "Section: Reasoning About Action And Planning"),
         (ReferenceKind.reference, "Section: DLs Ontologies"),
         (ReferenceKind.reference, "Section: Argumentation"),
+        (ReferenceKind.reference, "Section: ASP"),
     ]
 
 

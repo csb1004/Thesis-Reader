@@ -211,7 +211,8 @@ void main() {
             'kind': 'paragraph',
             'text':
                 'reasoning about action (Section Section areas:ReasoningAboutActionAndPlanning), '
-                'description logics (Section Section areas:DLsOntologies).',
+                'description logics (Section Section areas:DLsOntologies), '
+                'answer set programming (Section areas.ASP).',
           },
           {
             'id': 'heading-1',
@@ -239,6 +240,7 @@ void main() {
       contains('Section Reasoning About Action And Planning'),
     );
     expect(paragraph.text, contains('Section DLs Ontologies'));
+    expect(paragraph.text, contains('Section ASP'));
     expect(
       [(paragraph.referenceSpans[0].kind, paragraph.referenceSpans[0].label)],
       [
@@ -251,6 +253,10 @@ void main() {
     expect(
       [(paragraph.referenceSpans[1].kind, paragraph.referenceSpans[1].label)],
       [(ReferenceKind.reference, 'Section: DLs Ontologies')],
+    );
+    expect(
+      [(paragraph.referenceSpans[2].kind, paragraph.referenceSpans[2].label)],
+      [(ReferenceKind.reference, 'Section: ASP')],
     );
   });
 

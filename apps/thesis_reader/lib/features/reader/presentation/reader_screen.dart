@@ -638,48 +638,59 @@ final class _ReaderScreenState extends State<ReaderScreen> {
     TranslationAction action, {
     String? sourceSentence,
   }) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     return showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  action.sourceText,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                SelectableText(action.koreanText),
-                if (!action.shouldAutoSave && action.canAddToVocabulary) ...[
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        unawaited(
-                          _saveVocabulary(
-                            action,
-                            sourceSentence: sourceSentence,
-                          ),
-                        );
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${action.sourceText} 단어장에 저장됨'),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.bookmark_add_outlined),
-                      label: const Text('단어장에 추가'),
-                    ),
+        final textTheme = Theme.of(context).textTheme;
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.48,
+          minChildSize: 0.28,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) => SafeArea(
+            key: const Key('reader-translation-result-sheet'),
+            child: SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    readerActionPreview(action.sourceText, maxLength: 80),
+                    style: textTheme.titleLarge,
                   ),
+                  const SizedBox(height: 12),
+                  SelectableText(action.koreanText, style: textTheme.bodyLarge),
+                  if (!action.shouldAutoSave && action.canAddToVocabulary) ...[
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          unawaited(
+                            _saveVocabulary(
+                              action,
+                              sourceSentence: sourceSentence,
+                            ),
+                          );
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${action.sourceText} 단어장에 저장됨'),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.bookmark_add_outlined),
+                        label: const Text('단어장에 추가'),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -1734,32 +1745,31 @@ final class _ReferenceSelectableTextState
         label: '간단 번역',
         onPressed: selectedText.isEmpty
             ? null
-            : () {
-                editableTextState.hideToolbar();
-                unawaited(
-                  widget.onSimpleTranslateSelection(selectedText, widget.text),
-                );
-              },
+            : () => _runSelectionAction(
+                editableTextState,
+                selectedText,
+                widget.onSimpleTranslateSelection,
+              ),
       ),
       ContextMenuButtonItem(
         label: 'OpenAI 번역',
         onPressed: selectedText.isEmpty
             ? null
-            : () {
-                editableTextState.hideToolbar();
-                unawaited(
-                  widget.onTranslateSelection(selectedText, widget.text),
-                );
-              },
+            : () => _runSelectionAction(
+                editableTextState,
+                selectedText,
+                widget.onTranslateSelection,
+              ),
       ),
       ContextMenuButtonItem(
         label: '단어장에 추가',
         onPressed: selectedText.isEmpty
             ? null
-            : () {
-                editableTextState.hideToolbar();
-                unawaited(widget.onAddVocabulary(selectedText, widget.text));
-              },
+            : () => _runSelectionAction(
+                editableTextState,
+                selectedText,
+                widget.onAddVocabulary,
+              ),
       ),
     ];
 
@@ -1767,6 +1777,33 @@ final class _ReferenceSelectableTextState
       anchors: editableTextState.contextMenuAnchors,
       buttonItems: buttonItems,
     );
+  }
+
+  void _runSelectionAction(
+    EditableTextState editableTextState,
+    String selectedText,
+    _SelectionAction action,
+  ) {
+    _collapseSelection(editableTextState);
+    unawaited(action(selectedText, widget.text));
+  }
+
+  void _collapseSelection(EditableTextState editableTextState) {
+    final value = editableTextState.textEditingValue;
+    final selection = value.selection;
+
+    editableTextState.hideToolbar();
+    if (selection.isValid && !selection.isCollapsed) {
+      editableTextState.userUpdateTextEditingValue(
+        value.copyWith(
+          selection: TextSelection.collapsed(
+            offset: math.max(0, math.min(selection.end, value.text.length)),
+          ),
+        ),
+        SelectionChangedCause.toolbar,
+      );
+    }
+    FocusScope.of(context).unfocus();
   }
 
   void _disposeRecognizers() {

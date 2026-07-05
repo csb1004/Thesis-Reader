@@ -132,7 +132,7 @@ abstract final class DocumentPackageLoader {
   static _NormalizedExtractedText _normalizeLegacySectionReferences(
     String text,
   ) {
-    final pattern = RegExp(r'(?:Section\s+)?Section areas:([A-Za-z0-9_]+)');
+    final pattern = RegExp(r'(?:Section\s+)?Section areas[.:]([A-Za-z0-9_]+)');
     final spans = <ReferenceSpan>[];
     final buffer = StringBuffer();
     var cursor = 0;

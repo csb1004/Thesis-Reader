@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:document_contract/document_contract.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:thesis_reader/features/ai/data/simple_translation_client.dart';
 import 'package:thesis_reader/features/reader/domain/reader_settings.dart';
 import 'package:thesis_reader/features/reader/presentation/reader_screen.dart';
 import 'package:thesis_reader/shared/platform/volume_key_channel.dart';
@@ -509,6 +513,94 @@ void main() {
     );
 
     expect(selectable.contextMenuBuilder, isNotNull);
+  });
+
+  testWidgets('selection action clears handles before running translation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks(['Transformer context sentence']),
+        ),
+      ),
+    );
+
+    final editableState = tester.state<EditableTextState>(
+      find.byType(EditableText).first,
+    );
+    editableState.userUpdateTextEditingValue(
+      editableState.textEditingValue.copyWith(
+        selection: const TextSelection(baseOffset: 0, extentOffset: 11),
+      ),
+      SelectionChangedCause.longPress,
+    );
+
+    final menu = _selectionToolbarForEditableText(tester, editableState);
+    menu.buttonItems!.first.onPressed!();
+    await tester.pump();
+
+    expect(editableState.textEditingValue.selection.isCollapsed, isTrue);
+  });
+
+  testWidgets('long selection translation opens a constrained result sheet', (
+    tester,
+  ) async {
+    const selectedText =
+        'Answer set programming in its most basic form can be seen as a '
+        'fragment of default logic with semantics directly traceable to '
+        'default extensions and related nonmonotonic reasoning systems.';
+    final client = SimpleTranslationClient(
+      httpClient: MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            '{"responseData":{"translatedText":"translated result"}}',
+          ),
+          200,
+        );
+      }),
+    );
+    addTearDown(client.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(
+          documentId: 'doc-1',
+          package: _packageWithBlocks([selectedText]),
+          simpleTranslationClient: client,
+        ),
+      ),
+    );
+
+    final editableState = tester.state<EditableTextState>(
+      find.byType(EditableText).first,
+    );
+    editableState.userUpdateTextEditingValue(
+      editableState.textEditingValue.copyWith(
+        selection: TextSelection(
+          baseOffset: 0,
+          extentOffset: selectedText.length,
+        ),
+      ),
+      SelectionChangedCause.longPress,
+    );
+
+    final menu = _selectionToolbarForEditableText(tester, editableState);
+    menu.buttonItems!.first.onPressed!();
+    await tester.pumpAndSettle();
+
+    final sheet = find.byKey(const Key('reader-translation-result-sheet'));
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.byType(SingleChildScrollView)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text(selectedText)),
+      findsNothing,
+    );
+    expect(find.text('translated result'), findsOneWidget);
   });
 
   testWidgets('opens referenced asset in a bottom sheet', (tester) async {
@@ -1040,6 +1132,17 @@ TextSpan _textSpanWithText(WidgetTester tester, String text) {
     }
   }
   throw StateError('No TextSpan found for $text');
+}
+
+AdaptiveTextSelectionToolbar _selectionToolbarForEditableText(
+  WidgetTester tester,
+  EditableTextState editableState,
+) {
+  final selectable = tester.widget<SelectableText>(
+    find.byType(SelectableText).first,
+  );
+  return selectable.contextMenuBuilder!(editableState.context, editableState)
+      as AdaptiveTextSelectionToolbar;
 }
 
 String _flattenSelectableText(SelectableText selectable) {
