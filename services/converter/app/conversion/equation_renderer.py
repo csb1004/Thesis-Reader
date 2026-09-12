@@ -43,6 +43,7 @@ def _render_with_pdflatex(
         result = subprocess.run(
             [
                 "pdflatex",
+                "-no-shell-escape",
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-file-line-error",

@@ -24,10 +24,22 @@ class ArxivSourceError(RuntimeError):
 
 
 def detect_arxiv_id(filename: str, pdf_text: str) -> str | None:
-    for candidate in (filename, pdf_text):
-        match = ARXIV_ID_PATTERN.search(candidate or "")
+    filename_match = ARXIV_ID_PATTERN.fullmatch(Path(filename).stem)
+    stamps = set()
+    for line in pdf_text.splitlines():
+        match = re.fullmatch(
+            r"\s*arxiv:\s*(" + ARXIV_ID_PATTERN.pattern + r")\s+\[[^\]]+\](?:\s+.*)?",
+            line, flags=re.IGNORECASE,
+        )
         if match:
-            return match.group("id")
+            stamps.add(match.group("id"))
+    if len(stamps) == 1:
+        stamp = next(iter(stamps))
+        if filename_match and re.sub(r"v\d+$", "", filename_match.group("id")) != re.sub(r"v\d+$", "", stamp):
+            return None
+        return stamp
+    if not stamps and filename_match:
+        return filename_match.group("id")
     return None
 
 

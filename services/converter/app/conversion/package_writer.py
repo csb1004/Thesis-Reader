@@ -6,6 +6,18 @@ from services.converter.app.models.document_package import DocumentPackage
 
 
 def write_document_package(package: DocumentPackage, output_dir: Path) -> None:
+    # Python offsets count code points; Flutter String indexes UTF-16 code units.
+    if (package.sourceInfo or {}).get("offsetEncoding") != "utf-16":
+        for block in package.blocks:
+            text = block.text or ""
+            offsets = [0]
+            for char in text:
+                offsets.append(offsets[-1] + len(char.encode("utf-16-le")) // 2)
+            for span in [*block.textSpans, *block.referenceSpans]:
+                if not 0 <= span.start <= span.end <= len(text):
+                    raise ValueError(f"Invalid text span in {block.id}")
+                span.start, span.end = offsets[span.start], offsets[span.end]
+        package.sourceInfo = {**(package.sourceInfo or {}), "offsetEncoding": "utf-16", "textNormalized": True}
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "assets").mkdir(exist_ok=True)
 

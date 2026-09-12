@@ -46,16 +46,25 @@ def convert_latex_source_to_package(
     source_filename: str,
     original_pdf_sha256: str,
     source_info: dict[str, str],
+    original_pdf_path: Path | None = None,
 ) -> DocumentPackage:
     raw = main_tex.read_text(encoding="utf-8", errors="ignore")
     expanded = _expand_simple_includes(raw, main_tex.parent)
-    body = _document_body(expanded)
+    body = _expand_user_macros(_document_body(expanded), expanded.split(r"\begin{document}", 1)[0])
     title = _clean_text(_first_match(raw, r"\\title\{(?P<value>.*?)\}") or main_tex.stem)
     section_reference_numbers = _section_reference_numbers(body)
     blocks = _extract_blocks(body, section_reference_numbers)
     if not blocks:
         raise ValueError("LaTeX source produced no reader blocks")
+    if original_pdf_path is not None:
+        _validate_source_identity(title, blocks, original_pdf_path)
+        if any(block.kind in {BlockKind.figure, BlockKind.table} for block in blocks):
+            raise ValueError("Source contains visuals requiring original PDF extraction")
     blocks, assets = _attach_equation_assets(blocks, output_dir)
+    if original_pdf_path is not None and any(
+        (block.source or {}).get("renderMode") == "fallback-png" for block in blocks
+    ):
+        raise ValueError("Equation rendering failed; use original PDF visuals")
 
     anchored, sections = _assign_blocks_to_sections(blocks)
     package = DocumentPackage(
@@ -66,7 +75,7 @@ def convert_latex_source_to_package(
             sourceFilename=source_filename,
             originalPdfSha256=original_pdf_sha256,
             importedAtIso8601=datetime.now(UTC).isoformat(),
-            converterVersion="mvp-2",
+            converterVersion="mvp-3",
         ),
         conversionMode="latex-source",
         fallbackReason=None,
@@ -78,6 +87,48 @@ def convert_latex_source_to_package(
     )
     write_document_package(package, output_dir)
     return package
+
+
+def _validate_source_identity(title: str, blocks: list[DocumentBlock], pdf_path: Path) -> None:
+    import fitz
+
+    words = lambda text: re.findall(r"[a-z]{3,}", text.lower())
+    with fitz.open(pdf_path) as document:
+        pdf_words = words(" ".join(page.get_text() for page in document))
+    title_words = words(title)
+    vocabulary = set(pdf_words)
+    if not title_words or sum(word in vocabulary for word in title_words) / len(title_words) < .9:
+        raise ValueError("TeX title does not match uploaded PDF")
+    source_words = words(" ".join(block.text or "" for block in blocks if block.kind == BlockKind.paragraph))
+    if len(source_words) < 20:
+        raise ValueError("Insufficient source text to verify PDF identity")
+    pdf_pairs = set(zip(pdf_words, pdf_words[1:]))
+    source_pairs = list(zip(source_words, source_words[1:]))
+    if sum(pair in pdf_pairs for pair in source_pairs) / len(source_pairs) < .65:
+        raise ValueError("TeX content does not match uploaded PDF")
+
+
+def _expand_user_macros(body: str, preamble: str) -> str:
+    preamble = _strip_comments(preamble)
+    declarations = re.compile(r"\\(?:newcommand|renewcommand|providecommand)\*?\s*(?:\{\\(?P<braced>[A-Za-z]+)\}|\\(?P<bare>[A-Za-z]+))\s*(?:\[(?P<count>\d)\])?\s*")
+    macros = {}
+    for match in declarations.finditer(preamble):
+        parsed = _read_balanced_latex_group(preamble, match.end())
+        if parsed is None:
+            continue
+        value, _ = parsed
+        macros[match.group("braced") or match.group("bare")] = (int(match.group("count") or 0), value)
+    for _ in range(20):
+        previous = body
+        for name, (count, value) in macros.items():
+            def substitute(args: list[str], template: str = value) -> str:
+                return re.sub(r"#([1-9])", lambda m: args[int(m.group(1))-1] if int(m.group(1)) <= len(args) else m.group(0), template)
+            body = _replace_latex_macro_args(body, name, count, substitute)
+        if body == previous:
+            return body
+        if len(body) > 5_000_000:
+            raise ValueError("TeX macro expansion exceeds size limit")
+    raise ValueError("Recursive TeX macro expansion")
 
 
 def _attach_equation_assets(
@@ -317,19 +368,29 @@ def _document_body(text: str) -> str:
 
 
 def _expand_simple_includes(text: str, root: Path) -> str:
-    pattern = re.compile(r"\\(?:input|include)\{(?P<path>[^}]+)\}")
+    pattern = re.compile(r"\\(?:input|include)\s*(?:\{(?P<braced>[^}]+)\}|(?P<bare>[^\s{}]+))")
+    root = root.resolve()
 
-    def replace(match: re.Match[str]) -> str:
-        include_path = root / match.group("path")
-        if include_path.suffix != ".tex":
-            include_path = include_path.with_suffix(".tex")
-        root_path = root.resolve()
-        resolved = include_path.resolve()
-        if not include_path.exists() or not resolved.is_relative_to(root_path):
-            return ""
-        return include_path.read_text(encoding="utf-8", errors="ignore")
+    def expand(content: str, directory: Path, stack: tuple[Path, ...]) -> str:
+        if len(stack) > 32:
+            raise ValueError("TeX include nesting exceeds 32 levels")
 
-    return pattern.sub(replace, text)
+        def replace(match: re.Match[str]) -> str:
+            name = Path(match.group("braced") or match.group("bare"))
+            if not name.suffix:
+                name = name.with_suffix(".tex")
+            # TeX resolves from the main directory; accept local nested paths too.
+            candidates = [(root / name).resolve(), (directory / name).resolve()]
+            path = next((p for p in candidates if p.is_relative_to(root) and p.is_file()), None)
+            if path is None:
+                raise ValueError(f"Missing or unsafe TeX include: {name}")
+            if path in stack:
+                raise ValueError(f"Cyclic TeX include: {name}")
+            return expand(path.read_text(encoding="utf-8"), path.parent, (*stack, path))
+
+        return pattern.sub(replace, _strip_comments(content))
+
+    return expand(text, root, ())
 
 
 def _tokenize_body(
@@ -754,7 +815,7 @@ def _extract_marked_text_spans(
 
     literal = text[cursor:]
     output.append(literal)
-    output_text = "".join(output).strip()
+    output_text = "".join(output)
     return output_text, text_spans, reference_spans
 
 
@@ -799,6 +860,8 @@ def _human_readable_reference_label(
     section_reference_numbers: dict[str, str],
 ) -> tuple[str, str | None]:
     prefix_name, cleaned_body = _reference_type_and_body(command, label)
+    if label in section_reference_numbers:
+        prefix_name = "Section"
     if prefix_name == "Section":
         cleaned_body = (
             section_reference_numbers.get(label)

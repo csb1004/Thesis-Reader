@@ -82,7 +82,9 @@ abstract final class DocumentPackageLoader {
       documentId: package.documentId,
       metadata: package.metadata,
       sections: package.sections,
-      blocks: [for (final block in package.blocks) _normalizeBlockText(block)],
+      blocks: [
+        for (final block in package.blocks) _normalizeBlockText(block, package),
+      ],
       assets: package.assets,
       conversionMode: package.conversionMode,
       fallbackReason: package.fallbackReason,
@@ -93,10 +95,30 @@ abstract final class DocumentPackageLoader {
     );
   }
 
-  static DocumentBlock _normalizeBlockText(DocumentBlock block) {
-    final normalizedText = block.text == null
-        ? null
+  static DocumentBlock _normalizeBlockText(
+    DocumentBlock block,
+    DocumentPackage package,
+  ) {
+    final preserveText =
+        package.sourceInfo?['textNormalized'] == true ||
+        package.conversionMode == 'latex-source' ||
+        block.source?['preserveStructure'] == true ||
+        block.textSpans.isNotEmpty ||
+        block.referenceSpans.isNotEmpty;
+    final normalizedText = block.text == null || preserveText
+        ? block.text
         : _normalizeExtractedBlockText(block.text!);
+    final legacyPythonOffsets =
+        package.sourceInfo?['offsetEncoding'] != 'utf-16' &&
+        (package.metadata.converterVersion == 'mvp-1' ||
+            package.metadata.converterVersion == 'mvp-2');
+    int offset(int index) {
+      if (!legacyPythonOffsets || block.text == null) return index;
+      if (index < 0) return index;
+      if (index > block.text!.runes.length) return block.text!.length + 1;
+      return String.fromCharCodes(block.text!.runes.take(index)).length;
+    }
+
     return DocumentBlock(
       id: block.id,
       sectionId: block.sectionId,
@@ -105,8 +127,26 @@ abstract final class DocumentPackageLoader {
       assetId: block.assetId,
       latex: block.latex,
       source: block.source,
-      textSpans: block.textSpans,
-      referenceSpans: block.referenceSpans,
+      textSpans: [
+        for (final span in block.textSpans)
+          TextStyleSpan(
+            start: offset(span.start),
+            end: offset(span.end),
+            bold: span.bold,
+            italic: span.italic,
+            highlight: span.highlight,
+          ),
+      ],
+      referenceSpans: [
+        for (final span in block.referenceSpans)
+          ReferenceSpan(
+            start: offset(span.start),
+            end: offset(span.end),
+            targetAssetId: span.targetAssetId,
+            kind: span.kind,
+            label: span.label,
+          ),
+      ],
       anchor: block.anchor,
     );
   }

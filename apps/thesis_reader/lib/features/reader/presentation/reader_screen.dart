@@ -2128,6 +2128,9 @@ bool _isRenderableReferenceSpan(
   ReferenceSpan span,
   Map<String, DocumentAsset> assetsById,
 ) {
+  if (span.start < 0 || span.end > text.length || span.end <= span.start) {
+    return false;
+  }
   if (_isSectionReferenceSpan(text, span)) {
     return false;
   }
@@ -2135,9 +2138,17 @@ bool _isRenderableReferenceSpan(
     return _isExactCitationSpan(text, span);
   }
   if (span.kind == ReferenceKind.reference) {
-    return true;
+    final label = span.label;
+    if (label == null || label.isEmpty) return false;
+    final visible = text.substring(span.start, span.end).trim();
+    return visible == label ||
+        visible == label.replaceFirst(RegExp(r':\s*'), ' ') ||
+        (label.contains(':') && visible == label.split(':').last.trim());
   }
-  return assetsById.containsKey(span.targetAssetId);
+  final asset = assetsById[span.targetAssetId];
+  if (asset == null) return false;
+  return text.substring(span.start, span.end).trim() ==
+      (span.label ?? asset.label).trim();
 }
 
 bool _isExactCitationSpan(String text, ReferenceSpan span) {

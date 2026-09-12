@@ -75,6 +75,18 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
     anchors: list[ReadingAnchor] = []
     assets_by_label: dict[str, DocumentAsset] = {}
 
+    def register_asset(label: str, kind: AssetKind, prefix: str, caption: str | None = None) -> DocumentAsset:
+        base_id = f"{prefix}-{_reference_number(label)}"
+        asset_id = base_id
+        used_ids = {asset.id for asset in assets_by_label.values()}
+        if asset_id in used_ids:
+            asset_id = f"{base_id}-region-{len(assets_by_label) + 1}"
+        asset = DocumentAsset(id=asset_id, kind=kind, label=label,
+                              relativePath=f"assets/{asset_id}.png", caption=caption)
+        storage_key = label if label not in assets_by_label else f"{label}#{asset_id}"
+        assets_by_label[storage_key] = asset
+        return asset
+
     for index, line in enumerate(body_lines, start=1):
         block_id = f"block-{index}"
         anchor = ReadingAnchor(
@@ -86,15 +98,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
         anchors.append(anchor)
         if line.get("kind") == BlockKind.equation:
             label = _equation_label(line["text"], len(assets_by_label) + 1)
-            asset = assets_by_label.setdefault(
-                label,
-                DocumentAsset(
-                    id=f"eq-{_reference_number(label)}",
-                    kind=AssetKind.equation,
-                    label=label,
-                    relativePath=f"assets/eq-{_reference_number(label)}.png",
-                ),
-            )
+            asset = register_asset(label, AssetKind.equation, "eq")
             line["assetId"] = asset.id
             blocks.append(
                 DocumentBlock(
@@ -107,15 +111,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
             )
         elif line.get("kind") == BlockKind.table:
             label = _table_label(line["text"], len(assets_by_label) + 1)
-            asset = assets_by_label.setdefault(
-                label,
-                DocumentAsset(
-                    id=f"table-{_reference_number(label)}",
-                    kind=AssetKind.table,
-                    label=label,
-                    relativePath=f"assets/table-{_reference_number(label)}.png",
-                ),
-            )
+            asset = register_asset(label, AssetKind.table, "table")
             line["assetId"] = asset.id
             blocks.append(
                 DocumentBlock(
@@ -128,16 +124,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
             )
         elif line.get("kind") == BlockKind.figure:
             label = _figure_label(line["text"], len(assets_by_label) + 1)
-            asset = assets_by_label.setdefault(
-                label,
-                DocumentAsset(
-                    id=f"fig-{_reference_number(label)}",
-                    kind=AssetKind.figure,
-                    label=label,
-                    relativePath=f"assets/fig-{_reference_number(label)}.png",
-                    caption=_figure_caption(line["text"]),
-                ),
-            )
+            asset = register_asset(label, AssetKind.figure, "fig", _figure_caption(line["text"]))
             line["assetId"] = asset.id
             blocks.append(
                 DocumentBlock(
@@ -156,12 +143,17 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
                     sectionId=section_id,
                     kind=block_kind,
                     text=line["text"],
-                    referenceSpans=[]
-                    if block_kind == BlockKind.reference
-                    else _reference_spans(line["text"], assets_by_label),
+                    referenceSpans=[],
                     anchor=anchor,
                 )
             )
+
+    # Resolve links only after their actual visual targets have been collected.
+    unique_targets = {label: asset for label, asset in assets_by_label.items()
+                      if sum(other.label == label for other in assets_by_label.values()) == 1}
+    for block in blocks:
+        if block.text and block.kind != BlockKind.reference:
+            block.referenceSpans = _reference_spans(block.text, unique_targets)
 
     package = DocumentPackage(
         packageVersion=1,
@@ -171,7 +163,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
             sourceFilename=pdf_path.name,
             originalPdfSha256=hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
             importedAtIso8601=datetime.now(UTC).isoformat(),
-            converterVersion="mvp-1",
+            converterVersion="mvp-3",
         ),
         sections=[
             DocumentSection(
@@ -194,6 +186,8 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
     with fitz.open(pdf_path) as document:
         for page_index, page in enumerate(document, start=1):
             raw_blocks = page.get_text("dict").get("blocks", [])
+            visuals = [fitz.Rect(block["bbox"]) for block in raw_blocks if block.get("type") == 1]
+            visuals.extend(page.cluster_drawings())
             for block in raw_blocks:
                 if block.get("type") != 0:
                     continue
@@ -210,9 +204,57 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
                         _line_font_size(line),
                     ):
                         continue
-                    extracted.append({"text": text, "page": page_index, "rect": rect})
-    extracted.sort(key=lambda item: (item["page"], item["rect"][1], item["rect"][0]))
-    return extracted
+                    item = {"text": text, "page": page_index, "rect": rect,
+                            "pageWidth": page.rect.width}
+                    if re.match(r"^Figure\s+\d+\s*[:.]", text):
+                        candidates = [visual for visual in visuals
+                                      if visual.width > 10 and visual.height > 10
+                                      and 0 <= rect[1] - visual.y1 <= 72
+                                      and visual.x0 < rect[2] and visual.x1 > rect[0]]
+                        if candidates:
+                            visual = min(candidates, key=lambda visual: rect[1] - visual.y1)
+                            item["visualRect"] = list(visual | fitz.Rect(rect))
+                    extracted.append(item)
+    return _reading_order(extracted)
+
+
+def _reading_order(lines: list[dict]) -> list[dict]:
+    ordered = []
+    for page_number in sorted({line["page"] for line in lines}):
+        page_lines = [line for line in lines if line["page"] == page_number]
+        width = page_lines[0]["pageWidth"]
+        middle = width / 2
+        left = [line for line in page_lines if line["rect"][2] <= middle + 8]
+        right = [line for line in page_lines if line["rect"][0] >= middle - 8 and line not in left]
+        # Require repeated rows on both sides, not an isolated equation number.
+        prose = lambda items: [line for line in items if len(re.findall(r"[A-Za-z]{3,}", line["text"])) >= 5]
+        two_columns = len(prose(left)) >= 2 and len(prose(right)) >= 2
+        if two_columns:
+            two_columns = min(max(line["rect"][3] for line in prose(left)), max(line["rect"][3] for line in prose(right))) > max(min(line["rect"][1] for line in prose(left)), min(line["rect"][1] for line in prose(right)))
+        if not two_columns:
+            ordered.extend(sorted(page_lines, key=lambda line: (line["rect"][1], line["rect"][0])))
+            continue
+        spanning = [line for line in page_lines if line not in left and line not in right]
+        pending = sorted(left + right, key=lambda line: line["rect"][1])
+        band = 0
+
+        def emit(items: list[dict]) -> None:
+            for column, column_lines in enumerate((left, right)):
+                for line in sorted((line for line in items if line in column_lines), key=lambda line: line["rect"][1]):
+                    line["flow"] = f"{page_number}:{band}:{column}"
+                    line["columnLeft"] = 0 if column == 0 else middle
+                    line["columnRight"] = middle if column == 0 else width
+                    ordered.append(line)
+
+        for line in sorted(spanning, key=lambda line: line["rect"][1]):
+            before = [item for item in pending if item["rect"][1] < line["rect"][1]]
+            emit(before)
+            pending = [item for item in pending if item not in before]
+            line["flow"] = f"{page_number}:spanning:{band}"
+            ordered.append(line)
+            band += 1
+        emit(pending)
+    return ordered
 
 
 def _line_font_size(line: dict) -> float:
@@ -264,6 +306,9 @@ def _combine_inline_pdf_lines(lines: list[dict]) -> list[dict]:
 
 
 def _same_visual_line(left: list[float], right: list[float]) -> bool:
+    horizontal_gap = max(left[0], right[0]) - min(left[2], right[2])
+    if horizontal_gap > max(left[3] - left[1], right[3] - right[1]) * 2:
+        return False
     vertical_overlap = min(left[3], right[3]) - max(left[1], right[1])
     if vertical_overlap <= 0:
         return False
@@ -359,6 +404,12 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             figure = None
 
     for line in lines:
+        if any(region is not None and region.get("flow") != line.get("flow")
+               for region in (current, equation, table, figure)):
+            flush_current()
+            flush_equation()
+            flush_table()
+            flush_figure()
         if _looks_like_references_heading(line["text"]):
             flush_current()
             flush_equation()
@@ -366,6 +417,14 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             flush_figure()
             inside_references = True
             current = dict(line)
+            continue
+
+        if "visualRect" in line:
+            flush_current()
+            flush_equation()
+            flush_table()
+            flush_figure()
+            paragraphs.append({**line, "kind": BlockKind.figure})
             continue
 
         if figure is not None:
@@ -478,6 +537,7 @@ def _annotate_asset_clip_bounds(lines: list[dict]) -> None:
                 candidate
                 for candidate in reversed(lines[:index])
                 if candidate["page"] == line["page"]
+                and candidate.get("flow") == line.get("flow")
                 and candidate.get("kind")
                 not in {BlockKind.equation, BlockKind.figure, BlockKind.table}
             ),
@@ -488,6 +548,7 @@ def _annotate_asset_clip_bounds(lines: list[dict]) -> None:
                 candidate
                 for candidate in lines[index + 1 :]
                 if candidate["page"] == line["page"]
+                and candidate.get("flow") == line.get("flow")
                 and candidate.get("kind")
                 not in {BlockKind.equation, BlockKind.figure, BlockKind.table}
             ),
@@ -672,7 +733,7 @@ def _looks_like_table_content(text: str) -> bool:
         return False
     if stripped in {"Model", "BLEU", "Training Cost (FLOPs)"}:
         return True
-    if re.fullmatch(r"\d{1,3}", stripped):
+    if re.fullmatch(r"[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?%?", stripped):
         return True
     if re.fullmatch(r"\([A-Z]\)", stripped):
         return True
@@ -775,6 +836,10 @@ def _should_merge_lines(previous: dict, current: dict) -> bool:
 
     previous_rect = previous["rect"]
     current_rect = current["rect"]
+    if previous.get("flow") != current.get("flow"):
+        return False
+    if min(previous_rect[2], current_rect[2]) <= max(previous_rect[0], current_rect[0]):
+        return False
     if _same_text_block(previous_rect, current_rect):
         return True
     if _overlaps_same_text_flow(previous_rect, current_rect):
@@ -880,15 +945,9 @@ def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> li
                 if asset is None:
                     continue
             else:
-                asset = assets_by_label.setdefault(
-                    label,
-                    DocumentAsset(
-                        id=f"{prefix}-{_reference_number(label)}",
-                        kind=asset_kind,
-                        label=label,
-                        relativePath=f"assets/{prefix}-{_reference_number(label)}.png",
-                    ),
-                )
+                asset = assets_by_label.get(label)
+                if asset is None:
+                    continue
             spans.append(
                 ReferenceSpan(
                     start=match.start(),
@@ -960,9 +1019,6 @@ def _write_asset_images(
         for asset in assets:
             target = output_dir / asset.relativePath
             target.parent.mkdir(parents=True, exist_ok=True)
-            if target.exists():
-                continue
-
             match = _line_for_asset(asset, lines)
             page_index = max(0, (match["page"] if match else 1) - 1)
             page = document[page_index]
@@ -975,15 +1031,15 @@ def _line_for_asset(asset: DocumentAsset, lines: list[dict]) -> dict | None:
     for line in lines:
         if line.get("assetId") == asset.id:
             return line
-    for line in lines:
-        if asset.label in line["text"]:
-            return line
     return None
 
 
 def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fitz.Rect:
     if line is None:
         return page.rect
+
+    if "visualRect" in line:
+        return (fitz.Rect(line["visualRect"]) + (-4, -4, 4, 4)) & page.rect
 
     rect = fitz.Rect(line["rect"])
     if asset.kind == AssetKind.equation:
@@ -997,9 +1053,9 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
             top = max(0, rect.y0 - EQUATION_CLIP_VERTICAL_PADDING)
             bottom = min(page.rect.height, rect.y1 + EQUATION_CLIP_VERTICAL_PADDING)
         return fitz.Rect(
-            max(0, rect.x0 - EQUATION_CLIP_LEFT_PADDING),
+            max(float(line.get("columnLeft", 0)), rect.x0 - EQUATION_CLIP_LEFT_PADDING),
             top,
-            min(page.rect.width, rect.x1 + EQUATION_CLIP_RIGHT_PADDING),
+            min(float(line.get("columnRight", page.rect.width)), rect.x1 + EQUATION_CLIP_RIGHT_PADDING),
             bottom,
         )
     if asset.kind == AssetKind.table:

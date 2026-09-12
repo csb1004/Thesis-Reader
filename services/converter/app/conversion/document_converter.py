@@ -1,5 +1,6 @@
 import hashlib
 import shutil
+import tempfile
 from pathlib import Path
 
 import fitz
@@ -25,17 +26,21 @@ def convert_document_to_package(
     arxiv_id = detect_arxiv_id(filename=pdf_path.name, pdf_text=pdf_text)
     if arxiv_id:
         try:
-            return _convert_from_arxiv_source(
-                arxiv_id=arxiv_id,
-                pdf_path=pdf_path,
-                output_dir=output_dir,
-                document_id=document_id,
-            )
+            output_dir.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="source-package-", dir=output_dir.parent) as stage:
+                package = _convert_from_arxiv_source(
+                    arxiv_id=arxiv_id,
+                    pdf_path=pdf_path,
+                    output_dir=Path(stage),
+                    document_id=document_id,
+                )
+                shutil.copytree(stage, output_dir, dirs_exist_ok=True)
+                return package
         except Exception as exc:
             package = convert_pdf_to_package(pdf_path, output_dir, document_id)
             package.conversionMode = "pdf-fallback"
             package.fallbackReason = str(exc)
-            package.sourceInfo = {"arxivId": arxiv_id}
+            package.sourceInfo = {**(package.sourceInfo or {}), "arxivId": arxiv_id}
             write_document_package(package, output_dir)
             return package
 
@@ -67,6 +72,7 @@ def _convert_from_arxiv_source(
             "arxivId": arxiv_id,
             "mainTex": main_tex.relative_to(bundle.root).as_posix(),
         },
+        original_pdf_path=pdf_path,
     )
 
 

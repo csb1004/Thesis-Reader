@@ -585,6 +585,36 @@ void main() {
     }
   });
 
+  testWidgets('does not link trailing prose with a stale named reference', (
+    tester,
+  ) async {
+    const text = 'See Figure One, another result follows.';
+    final package = _packageWithCustomBlocks([
+      DocumentBlock.paragraph(
+        id: 'b1',
+        sectionId: 's1',
+        text: text,
+        referenceSpans: [
+          ReferenceSpan(
+            start: 4,
+            end: text.indexOf(' result'),
+            targetAssetId: '',
+            kind: ReferenceKind.reference,
+            label: 'Figure: One',
+          ),
+        ],
+      ),
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+    for (final span in _textSpansContaining(tester, 'another')) {
+      expect(span.recognizer, isNull);
+    }
+  });
+
   testWidgets('table of contents jumps to selected section pages', (
     tester,
   ) async {
