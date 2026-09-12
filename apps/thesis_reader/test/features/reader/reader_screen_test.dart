@@ -615,6 +615,28 @@ void main() {
     }
   });
 
+  testWidgets('PDF math intervals do not acquire automatic citation links', (
+    tester,
+  ) async {
+    final package = _packageWithCustomBlocks([
+      const DocumentBlock(
+        id: 'b1',
+        sectionId: 's1',
+        kind: BlockKind.paragraph,
+        text: 'A parameter in [0, 1] remains ordinary math.',
+        source: {'mode': 'pdf-layout', 'autoDetectCitations': false},
+      ),
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ReaderScreen(documentId: 'doc-1', package: package),
+      ),
+    );
+    for (final span in _textSpansContaining(tester, '[0, 1]')) {
+      expect(span.recognizer, isNull);
+    }
+  });
+
   testWidgets('table of contents jumps to selected section pages', (
     tester,
   ) async {

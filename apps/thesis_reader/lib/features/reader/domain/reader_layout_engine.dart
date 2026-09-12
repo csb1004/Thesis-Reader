@@ -111,7 +111,7 @@ final class ReaderLayoutEngine {
     final blocks = package.blocks;
     for (var index = 0; index < blocks.length; index += 1) {
       final block = blocks[index];
-      final isHeading = _looksLikeHeading(block.text);
+      final isHeading = isReaderHeading(block);
       if (isHeading &&
           currentItems.isNotEmpty &&
           currentLineCount +
@@ -122,7 +122,10 @@ final class ReaderLayoutEngine {
       }
 
       if (block.text case final text?) {
-        final lines = metrics.wrapText(text);
+        final lines = metrics.wrapText(
+          text,
+          style: readerBlockTextStyle(block, metrics.textStyle),
+        );
         var lineIndex = 0;
         while (lineIndex < lines.length) {
           var availableLines = metrics.linesPerPage - currentLineCount;
@@ -229,6 +232,21 @@ bool _looksLikeHeading(String? text) {
       words.every((word) => word.isEmpty || word[0] == word[0].toUpperCase());
 }
 
+bool isReaderHeading(DocumentBlock block) =>
+    block.kind == BlockKind.heading ||
+    (block.source?['mode'] != 'pdf-layout' && _looksLikeHeading(block.text));
+
+TextStyle readerBlockTextStyle(DocumentBlock block, TextStyle base) {
+  if (!isReaderHeading(block)) return base;
+  return base.copyWith(
+    fontSize:
+        (base.fontSize ?? 16) *
+        (block.source?['headingLevel'] == 2 ? 1.15 : 1.5),
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+  );
+}
+
 final class _ReaderMetrics {
   const _ReaderMetrics({
     required this.charsPerLine,
@@ -275,7 +293,7 @@ final class _ReaderMetrics {
   final double contentWidth;
   final TextStyle textStyle;
 
-  List<_TextLine> wrapText(String text) {
+  List<_TextLine> wrapText(String text, {TextStyle? style}) {
     final normalized = text.trim();
     if (normalized.isEmpty) {
       return const [_TextLine(0, 0)];
@@ -283,7 +301,7 @@ final class _ReaderMetrics {
     final layoutText = buildReadableMathLayoutText(text);
 
     final painter = TextPainter(
-      text: TextSpan(text: layoutText.text, style: textStyle),
+      text: TextSpan(text: layoutText.text, style: style ?? textStyle),
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: contentWidth);
     final lines = <_TextLine>[];
@@ -315,7 +333,14 @@ final class _ReaderMetrics {
 
   int estimateBlockLines(DocumentBlock block) {
     if (block.text case final text?) {
-      return math.max(1, wrapText(text).length) + 1;
+      return math.max(
+            1,
+            wrapText(
+              text,
+              style: readerBlockTextStyle(block, textStyle),
+            ).length,
+          ) +
+          1;
     }
 
     return switch (block.kind) {

@@ -1,5 +1,6 @@
 import hashlib
 import re
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,9 +22,9 @@ from services.converter.app.models.document_package import (
 )
 
 REFERENCE_PATTERNS = (
-    (re.compile(r"\bFigure\s+\d+\b"), ReferenceKind.figure, AssetKind.figure, "fig"),
-    (re.compile(r"\bTable\s+\d+\b"), ReferenceKind.table, AssetKind.table, "table"),
-    (re.compile(r"\(\d+\)"), ReferenceKind.equation, AssetKind.equation, "eq"),
+    (re.compile(r"\bFigure\s+\d+(?:\.\d+)*\b"), ReferenceKind.figure, AssetKind.figure, "fig"),
+    (re.compile(r"\bTable\s+\d+(?:\.\d+)*\b"), ReferenceKind.table, AssetKind.table, "table"),
+    (re.compile(r"\(\d+(?:\.\d+)*\)"), ReferenceKind.equation, AssetKind.equation, "eq"),
 )
 CITATION_PATTERN = re.compile(r"\[(?:\d+\s*,\s*)*\d+\]")
 EQUATION_CLIP_LEFT_PADDING = 32.0
@@ -143,6 +144,7 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
                     sectionId=section_id,
                     kind=block_kind,
                     text=line["text"],
+                    source={"mode": "pdf-layout", "headingLevel": line.get("headingLevel")},
                     referenceSpans=[],
                     anchor=anchor,
                 )
@@ -151,9 +153,24 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
     # Resolve links only after their actual visual targets have been collected.
     unique_targets = {label: asset for label, asset in assets_by_label.items()
                       if sum(other.label == label for other in assets_by_label.values()) == 1}
+    numbered_references = {match.group(1) for block in blocks if block.kind == BlockKind.reference
+                           for match in [re.match(r"^\[(\d+)\]", block.text or "")] if match}
     for block in blocks:
         if block.text and block.kind != BlockKind.reference:
-            block.referenceSpans = _reference_spans(block.text, unique_targets)
+            block.referenceSpans = _reference_spans(block.text, unique_targets, numbered_references)
+            block.source = {**(block.source or {}), "autoDetectCitations": False}
+
+    sections = []
+    first_section = next((i for i, block in enumerate(blocks) if block.kind == BlockKind.heading and (
+        re.match(r"^\d+(?:\.\d+)*\s", block.text or "") or (block.text or "").lower() in {"abstract", "introduction", "references"}
+    )), 0)
+    for i, block in enumerate(blocks):
+        if not sections or (i >= first_section and block.kind == BlockKind.heading):
+            sections.append(DocumentSection(id=f"sec-{len(sections) + 1}",
+                                            title=block.text if block.kind == BlockKind.heading else "Document",
+                                            blockIds=[]))
+        block.sectionId = sections[-1].id
+        sections[-1].blockIds.append(block.id)
 
     package = DocumentPackage(
         packageVersion=1,
@@ -163,15 +180,9 @@ def convert_pdf_to_package(pdf_path: Path, output_dir: Path, document_id: str) -
             sourceFilename=pdf_path.name,
             originalPdfSha256=hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
             importedAtIso8601=datetime.now(UTC).isoformat(),
-            converterVersion="mvp-3",
+            converterVersion="mvp-4",
         ),
-        sections=[
-            DocumentSection(
-                id=section_id,
-                title="Document",
-                blockIds=[block.id for block in blocks],
-            )
-        ],
+        sections=sections,
         blocks=blocks,
         assets=list(assets_by_label.values()),
         anchors=anchors,
@@ -186,11 +197,16 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
     with fitz.open(pdf_path) as document:
         for page_index, page in enumerate(document, start=1):
             raw_blocks = page.get_text("dict").get("blocks", [])
+            footer_top = min((row["bbox"][1] for block in raw_blocks for row in block.get("lines", [])
+                              if "".join(s["text"] for s in row["spans"]).strip().isdigit()
+                              and row["bbox"][1] > page.rect.height * .88), default=page.rect.height)
             visuals = [fitz.Rect(block["bbox"]) for block in raw_blocks if block.get("type") == 1]
             visuals.extend(page.cluster_drawings())
             for block in raw_blocks:
                 if block.get("type") != 0:
                     continue
+                body_block = any(len(re.findall(r"[A-Za-z]{3,}", "".join(s["text"] for s in row["spans"]))) >= 5
+                                 for row in block.get("lines", []))
                 for line in _combine_inline_pdf_lines(block.get("lines", [])):
                     text = _line_text(line).strip()
                     if not text:
@@ -205,8 +221,15 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
                     ):
                         continue
                     item = {"text": text, "page": page_index, "rect": rect,
-                            "pageWidth": page.rect.width}
-                    if re.match(r"^Figure\s+\d+\s*[:.]", text):
+                            "pageWidth": page.rect.width, "pageHeight": page.rect.height,
+                            "rawBlock": block["number"], "fontSize": _line_font_size(line),
+                            "bold": all(int(s.get("flags", 0)) & 16 for s in line["spans"] if s.get("text", "").strip()),
+                            "mathFont": any("Math" in s.get("font", "") for s in line["spans"]),
+                            "bodyBlock": body_block,
+                            "footerTop": footer_top,
+                            "runningFont": all((s.get("flags", 0) & 2) and "Sans" in s.get("font", "") for s in line["spans"] if s.get("text", "").strip()),
+                            "prose": len(re.findall(r"[A-Za-z]{3,}", text)) >= 5}
+                    if re.match(r"^Figure\s+\d+(?:\.\d+)*\s*[:.]", text):
                         candidates = [visual for visual in visuals
                                       if visual.width > 10 and visual.height > 10
                                       and 0 <= rect[1] - visual.y1 <= 72
@@ -215,7 +238,87 @@ def _extract_lines(pdf_path: Path) -> list[dict]:
                             visual = min(candidates, key=lambda visual: rect[1] - visual.y1)
                             item["visualRect"] = list(visual | fitz.Rect(rect))
                     extracted.append(item)
-    return _reading_order(extracted)
+    return _prepare_pdf_structure(_reading_order(extracted))
+
+
+def _prepare_pdf_structure(lines: list[dict]) -> list[dict]:
+    sizes = Counter()
+    for line in lines:
+        if line["prose"] and not line["bold"]:
+            sizes[round(line["fontSize"])] += len(line["text"])
+    body_size = sizes.most_common(1)[0][0] if sizes else 11
+    contents_pages = {line["page"] for line in lines if line["text"].strip().lower() == "contents"}
+    leaders = Counter(line["page"] for line in lines if re.search(r"\.\s*\.\s*\.", line["text"]))
+    contents_pages.update(page for page, count in leaders.items() if count >= 3)
+    running = Counter()
+    for line in lines:
+        if line["rect"][1] < line["pageHeight"] * .1 and not line["bold"]:
+            running[re.sub(r"\d+", "#", line["text"])] += 1
+    cleaned = []
+    for line in lines:
+        top = line["rect"][1] < line["pageHeight"] * .1
+        if line["page"] > 1 and top and not line["bold"] and (
+            line["text"].isdigit() or line["runningFont"] or running[re.sub(r"\d+", "#", line["text"])] >= 2
+        ):
+            continue
+        named_heading = line["text"].strip().lower() in {"abstract", "references", "bibliography"}
+        if line["page"] not in contents_pages and (named_heading or (line["bold"] and line["fontSize"] >= body_size * .95 and len(line["text"]) < 200)):
+            line["kind"] = BlockKind.heading
+            line["headingLevel"] = 2 if re.match(r"^\d+\.\d+", line["text"]) else 1
+        if cleaned and line.get("kind") == BlockKind.heading:
+            previous = cleaned[-1]
+            if (previous.get("kind") == BlockKind.heading and previous["text"].isdigit()
+                    and previous["page"] == line["page"]
+                    and 0 <= line["rect"][1] - previous["rect"][3] < 80):
+                cleaned.pop()
+                line["text"] = previous["text"] + " " + line["text"]
+                line["rect"] = _union_rect(previous["rect"], line["rect"])
+            elif (previous.get("kind") == BlockKind.heading and previous["page"] == line["page"]
+                  and previous["rawBlock"] == line["rawBlock"]
+                  and not re.match(r"^\d", line["text"])
+                  and abs(previous["fontSize"] - line["fontSize"]) < 1):
+                cleaned.pop()
+                line["text"] = previous["text"] + " " + line["text"]
+                line["rect"] = _union_rect(previous["rect"], line["rect"])
+                line["headingLevel"] = previous["headingLevel"]
+        cleaned.append(line)
+    return _collect_numbered_equations(cleaned)
+
+
+def _collect_numbered_equations(lines: list[dict]) -> list[dict]:
+    consumed = set()
+    replacements = {}
+    for index, label in enumerate(lines):
+        if not re.fullmatch(r"\(\d+(?:\.\d+)*\)", label["text"]):
+            continue
+        page_lines = [(i, line) for i, line in enumerate(lines) if line["page"] == label["page"]]
+        prose_blocks = {line["rawBlock"] for _, line in page_lines if line["prose"]}
+        candidates = [(i, line) for i, line in page_lines
+                      if not line["prose"] and line.get("kind") != BlockKind.heading
+                      and line["mathFont"] and i not in consumed
+                      and line["rect"][0] < label["rect"][2]
+                      and line["rect"][3] >= label["rect"][1] - 12
+                      and line["rect"][1] <= label["rect"][3] + 12]
+        if not candidates:
+            continue
+        block_ids = {line["rawBlock"] for _, line in candidates}
+        candidate_ids = {i for i, _ in candidates}
+        members = [(i, line) for i, line in page_lines if i in candidate_ids or i == index
+                   or (line["rawBlock"] in block_ids and line["rawBlock"] not in prose_blocks)]
+        rect = label["rect"]
+        for i, line in members:
+            rect = _union_rect(rect, line["rect"])
+            consumed.add(i)
+        replacements[min(i for i, _ in members)] = {
+            **label, "rect": rect, "kind": BlockKind.equation, "exactClip": True,
+            "clipTop": max((line["rect"][3] + 1 for i, line in page_lines if i not in consumed
+                            and line.get("prose") and line["rect"][3] <= label["rect"][1]), default=0),
+            "clipBottom": min((line["rect"][1] - 1 for i, line in page_lines if i not in consumed
+                               and line.get("prose") and line["rect"][1] >= label["rect"][3]),
+                              default=label["pageHeight"]),
+        }
+    return [replacements[i] if i in replacements else line for i, line in enumerate(lines)
+            if i not in consumed or i in replacements]
 
 
 def _reading_order(lines: list[dict]) -> list[dict]:
@@ -339,8 +442,10 @@ def _line_text(line: dict) -> str:
     main_baseline = _median(baseline_candidates) if baseline_candidates else 0.0
 
     chunks: list[str] = []
-    for span in spans:
+    for span_index, span in enumerate(spans):
         text = span.get("text", "")
+        if "MathExtension" in span.get("font", ""):
+            text = text.translate(str.maketrans({"P": "∑", "X": "∑", "Q": "∏", "Y": "∏", "R": "∫", "Z": "∫"}))
         if not text:
             continue
         size = float(span.get("size", main_size))
@@ -354,6 +459,11 @@ def _line_text(line: dict) -> str:
                 chunks.append(_translate_script(text, SUBSCRIPT_TRANSLATION))
                 continue
         if not (size <= main_size * 0.8 and text.isspace()):
+            if chunks and text and not text[0].isspace() and not chunks[-1][-1:].isspace():
+                previous_span = spans[span_index - 1]
+                gap = span.get("bbox", [0, 0, 0, 0])[0] - previous_span.get("bbox", [0, 0, 0, 0])[2]
+                if gap > main_size * .25:
+                    chunks.append(" ")
             chunks.append(text)
 
     return "".join(chunks)
@@ -410,6 +520,15 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             flush_equation()
             flush_table()
             flush_figure()
+        if line.get("kind") in {BlockKind.heading, BlockKind.equation}:
+            flush_current()
+            flush_equation()
+            flush_table()
+            flush_figure()
+            if _looks_like_references_heading(line["text"]):
+                inside_references = True
+            paragraphs.append(dict(line))
+            continue
         if _looks_like_references_heading(line["text"]):
             flush_current()
             flush_equation()
@@ -456,8 +575,9 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
             table["_hasTableContent"] = False
             continue
 
-        if _looks_like_equation_line(line["text"]) or (
-            equation is not None and _looks_like_equation_continuation(line["text"])
+        body_math = line.get("bodyBlock") and line.get("mathFont")
+        if (not body_math and not line.get("prose") and _looks_like_equation_line(line["text"])) or (
+            not body_math and equation is not None and _looks_like_equation_continuation(line["text"])
         ):
             flush_current()
             flush_figure()
@@ -503,6 +623,7 @@ def _merge_lines_into_paragraphs(lines: list[dict]) -> list[dict]:
         if _should_merge_lines(current, line):
             current["text"] = _join_wrapped_text(current["text"], line["text"])
             current["rect"] = _union_rect(current["rect"], line["rect"])
+            current["lastTop"] = line["rect"][1]
         else:
             paragraphs.append(current)
             current = dict(line)
@@ -836,6 +957,9 @@ def _should_merge_lines(previous: dict, current: dict) -> bool:
 
     previous_rect = previous["rect"]
     current_rect = current["rect"]
+    if (current.get("fontSize") and current_rect[0] > previous_rect[0] + current["fontSize"] * .8
+            and current_rect[1] > previous.get("lastTop", previous_rect[1]) + current["fontSize"] * .8):
+        return False
     if previous.get("flow") != current.get("flow"):
         return False
     if min(previous_rect[2], current_rect[2]) <= max(previous_rect[0], current_rect[0]):
@@ -919,10 +1043,12 @@ def _union_rect(left: list[float], right: list[float]) -> list[float]:
     ]
 
 
-def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset]) -> list[ReferenceSpan]:
+def _reference_spans(text: str, assets_by_label: dict[str, DocumentAsset], citation_numbers: set[str] | None = None) -> list[ReferenceSpan]:
     spans: list[ReferenceSpan] = []
     for match in CITATION_PATTERN.finditer(text):
         label = match.group(0)
+        if citation_numbers is not None and not all(number in citation_numbers for number in re.findall(r"\d+", label)):
+            continue
         spans.append(
             ReferenceSpan(
                 start=match.start(),
@@ -971,33 +1097,33 @@ def _has_explicit_equation_reference_context(text: str, start: int) -> bool:
 
 
 def _reference_number(label: str) -> str:
-    match = re.search(r"\d+", label)
+    match = re.search(r"\d+(?:\.\d+)*", label)
     return match.group(0) if match else "unknown"
 
 
 def _equation_label(text: str, fallback_number: int) -> str:
-    match = re.search(r"\(\s*(\d+)\s*\)", text)
+    match = re.search(r"\(\s*(\d+(?:\.\d+)*)\s*\)", text)
     if match:
         return f"({match.group(1)})"
     return f"Equation {fallback_number}"
 
 
 def _table_label(text: str, fallback_number: int) -> str:
-    match = re.search(r"\bTable\s+(\d+)\b", text)
+    match = re.search(r"\bTable\s+(\d+(?:\.\d+)*)\b", text)
     if match:
         return f"Table {match.group(1)}"
     return f"Table {fallback_number}"
 
 
 def _figure_label(text: str, fallback_number: int) -> str:
-    match = re.search(r"\bFigure\s+(\d+)\b", text)
+    match = re.search(r"\bFigure\s+(\d+(?:\.\d+)*)\b", text)
     if match:
         return f"Figure {match.group(1)}"
     return f"Figure {fallback_number}"
 
 
 def _figure_caption(text: str) -> str | None:
-    match = re.search(r"\bFigure\s+\d+\s*[:.]\s*(.+)", text)
+    match = re.search(r"\bFigure\s+\d+(?:\.\d+)*\s*[:.]\s*(.+)", text)
     if match:
         return match.group(1).strip()
     return None
@@ -1040,6 +1166,12 @@ def _asset_clip(page: fitz.Page, line: dict | None, asset: DocumentAsset) -> fit
 
     if "visualRect" in line:
         return (fitz.Rect(line["visualRect"]) + (-4, -4, 4, 4)) & page.rect
+    if line.get("exactClip"):
+        clip = (fitz.Rect(line["rect"]) + (-4, -4, 4, 4)) & page.rect
+        clip.y0 = max(clip.y0, line.get("clipTop", 0))
+        clip.y1 = min(clip.y1, line.get("footerTop", page.rect.height) - 2)
+        clip.y1 = min(clip.y1, line.get("clipBottom", page.rect.height))
+        return clip
 
     rect = fitz.Rect(line["rect"])
     if asset.kind == AssetKind.equation:

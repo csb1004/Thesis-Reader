@@ -1532,7 +1532,7 @@ final class _ReaderBlock extends StatelessWidget {
     }
 
     if (block.text case final text?) {
-      final isHeading = _looksLikeHeading(text);
+      final isHeading = isReaderHeading(block);
       return Padding(
         padding: EdgeInsets.only(
           bottom: addBottomSpacing ? (isHeading ? 12 : 16) : 0,
@@ -1542,13 +1542,8 @@ final class _ReaderBlock extends StatelessWidget {
           textSpans: block.textSpans,
           referenceSpans: block.referenceSpans,
           assetsById: assetsById,
-          style: isHeading
-              ? textStyle.copyWith(
-                  fontSize: (textStyle.fontSize ?? 16) * 1.5,
-                  fontWeight: FontWeight.w700,
-                  height: 1.25,
-                )
-              : textStyle,
+          autoDetectCitations: block.source?['autoDetectCitations'] != false,
+          style: readerBlockTextStyle(block, textStyle),
           onAssetPressed: onAssetPressed,
           onCitationPressed: onCitationPressed,
           onReferencePressed: onReferencePressed,
@@ -1723,25 +1718,6 @@ final class _InlineAssetFallback extends StatelessWidget {
   }
 }
 
-bool _looksLikeHeading(String text) {
-  final trimmed = text.trim();
-  if (trimmed.isEmpty || trimmed.length > 80) {
-    return false;
-  }
-  if (RegExp(r'^\d+(\.\d+)*$').hasMatch(trimmed)) {
-    return true;
-  }
-  if (trimmed.contains(RegExp(r'[.!?]'))) {
-    return false;
-  }
-  final words = trimmed.split(RegExp(r'\s+'));
-  if (words.length == 1) {
-    return trimmed[0] == trimmed[0].toUpperCase();
-  }
-  return words.length <= 8 &&
-      words.every((word) => word.isEmpty || word[0] == word[0].toUpperCase());
-}
-
 final class _ReferenceSelectableText extends StatefulWidget {
   const _ReferenceSelectableText({
     required this.text,
@@ -1755,9 +1731,11 @@ final class _ReferenceSelectableText extends StatefulWidget {
     required this.onSimpleTranslateSelection,
     required this.onTranslateSelection,
     required this.onAddVocabulary,
+    this.autoDetectCitations = true,
   });
 
   final String text;
+  final bool autoDetectCitations;
   final List<TextStyleSpan> textSpans;
   final List<ReferenceSpan> referenceSpans;
   final Map<String, DocumentAsset> assetsById;
@@ -1795,7 +1773,9 @@ final class _ReferenceSelectableTextState
     ];
     final validSpans = _validReferenceSpans(
       widget.text,
-      _withAutoCitationSpans(widget.text, renderableSpans),
+      widget.autoDetectCitations
+          ? _withAutoCitationSpans(widget.text, renderableSpans)
+          : renderableSpans,
     );
     final validStyleSpans = _validTextStyleSpans(widget.text, widget.textSpans);
 
